@@ -24,8 +24,11 @@ export function getStoredAISettings(): AISettings {
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
+      const rawModel = parsed.modelName || 'gemini-3.6-flash';
+      const cleanModel = rawModel.includes('2.0') || rawModel.includes('1.5') ? 'gemini-3.6-flash' : rawModel;
       return {
         ...parsed,
+        modelName: cleanModel,
         geminiApiKey: parsed.geminiApiKey || envGemini,
         openaiApiKey: parsed.openaiApiKey || envOpenai,
         claudeApiKey: parsed.claudeApiKey || envClaude,
@@ -40,7 +43,7 @@ export function getStoredAISettings(): AISettings {
     geminiApiKey: localStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || envGemini,
     openaiApiKey: localStorage.getItem(STORAGE_KEYS.OPENAI_KEY) || envOpenai,
     claudeApiKey: localStorage.getItem(STORAGE_KEYS.CLAUDE_KEY) || envClaude,
-    modelName: 'gemini-2.0-flash',
+    modelName: 'gemini-3.6-flash',
     temperature: 0.2,
   };
 }
@@ -74,10 +77,11 @@ function cleanJsonString(raw: string): string {
 async function callGemini(
   prompt: string,
   apiKey: string,
-  model = 'gemini-2.0-flash',
+  model = 'gemini-3.6-flash',
   imageInlineData?: { mimeType: string; data: string }
 ): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const activeModel = model.includes('2.0') || model.includes('1.5') ? 'gemini-3.6-flash' : model;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${apiKey}`;
 
   const parts: any[] = [{ text: prompt }];
   if (imageInlineData) {

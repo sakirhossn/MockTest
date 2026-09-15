@@ -183,13 +183,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-500 dark:text-slate-400">Gemini Model:</span>
                   <select
-                    value={aiSettings.modelName || 'gemini-2.0-flash'}
+                    value={aiSettings.modelName || 'gemini-3.6-flash'}
                     onChange={(e) => setAiSettings({ ...aiSettings, modelName: e.target.value })}
                     className="text-xs px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-800"
                   >
-                    <option value="gemini-2.0-flash">gemini-2.0-flash (Ultra Fast & Structured)</option>
-                    <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                    <option value="gemini-1.5-pro">gemini-1.5-pro (High Reasoning)</option>
+                    <option value="gemini-3.6-flash">gemini-3.6-flash (Recommended)</option>
+                    <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+                    <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
+                    <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
                   </select>
                 </div>
               </div>
