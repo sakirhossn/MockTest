@@ -24,8 +24,8 @@ export function getStoredAISettings(): AISettings {
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      const rawModel = parsed.modelName || 'gemini-3.6-flash';
-      const cleanModel = rawModel.includes('2.0') || rawModel.includes('1.5') ? 'gemini-3.6-flash' : rawModel;
+      const rawModel = parsed.modelName || 'gemini-2.5-flash';
+      const cleanModel = rawModel.includes('3.6') || rawModel.includes('3.8') || rawModel.includes('1.5') ? 'gemini-2.5-flash' : rawModel;
       return {
         ...parsed,
         modelName: cleanModel,
@@ -43,7 +43,7 @@ export function getStoredAISettings(): AISettings {
     geminiApiKey: localStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || envGemini,
     openaiApiKey: localStorage.getItem(STORAGE_KEYS.OPENAI_KEY) || envOpenai,
     claudeApiKey: localStorage.getItem(STORAGE_KEYS.CLAUDE_KEY) || envClaude,
-    modelName: 'gemini-3.6-flash',
+    modelName: 'gemini-2.5-flash',
     temperature: 0.2,
   };
 }
@@ -77,7 +77,7 @@ function cleanJsonString(raw: string): string {
 async function callGemini(
   prompt: string,
   apiKey: string,
-  model = 'gemini-3.6-flash',
+  model = 'gemini-2.5-flash',
   imageInlineData?: { mimeType: string; data: string }
 ): Promise<string> {
   const cleanKey = (apiKey || '').trim();
@@ -85,50 +85,86 @@ async function callGemini(
     throw new Error('Please configure your Google Gemini API key in Settings (gear icon at the top).');
   }
 
-  const activeModel = model.includes('2.0') || model.includes('1.5') ? 'gemini-3.6-flash' : model;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${cleanKey}`;
+  const primaryModel = model.includes('3.6') || model.includes('3.8') ? 'gemini-2.5-flash' : model;
+  const candidates = [
+    primaryModel,
+    'gemini-2.5-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+  ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
-  const parts: any[] = [{ text: prompt }];
-  if (imageInlineData) {
-    parts.unshift({
-      inlineData: {
-        mimeType: imageInlineData.mimeType,
-        data: imageInlineData.data,
-      },
-    });
-  }
+  let lastErrorMsg = '';
 
-  const payload = {
-    contents: [{ role: 'user', parts }],
-    systemInstruction: { parts: [{ text: EXAM_SETTER_SYSTEM_PROMPT }] },
-    generationConfig: {
-      temperature: 0.2,
-      responseMimeType: 'application/json',
-    },
-  };
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': cleanKey,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    const errMsg = err.error?.message || '';
-    if (errMsg.includes('invalid authentication') || errMsg.includes('API_KEY_INVALID') || res.status === 400 || res.status === 401) {
-      throw new Error('Invalid Google Gemini API key. Please check your API key in Settings (gear icon at the top).');
+  for (const m of candidates) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${cleanKey}`;
+    const parts: any[] = [{ text: prompt }];
+    if (imageInlineData) {
+      parts.unshift({
+        inlineData: {
+          mimeType: imageInlineData.mimeType,
+          data: imageInlineData.data,
+        },
+      });
     }
-    throw new Error(errMsg || `Gemini API call failed with status ${res.status}`);
+
+    const payload = {
+      contents: [{ role: 'user', parts }],
+      systemInstruction: { parts: [{ text: EXAM_SETTER_SYSTEM_PROMPT }] },
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+      },
+    };
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': cleanKey,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const errMsg = err.error?.message || '';
+
+        if (
+          errMsg.includes('invalid authentication') ||
+          errMsg.includes('API_KEY_INVALID') ||
+          res.status === 401
+        ) {
+          throw new Error('Invalid Google Gemini API key. Please check your API key in Settings (gear icon at the top).');
+        }
+
+        if (
+          res.status === 503 ||
+          res.status === 429 ||
+          errMsg.toLowerCase().includes('high demand') ||
+          errMsg.toLowerCase().includes('resource_exhausted') ||
+          errMsg.toLowerCase().includes('overloaded')
+        ) {
+          lastErrorMsg = errMsg;
+          console.warn(`Model ${m} busy (${errMsg}). Retrying with next fallback model...`);
+          await new Promise((r) => setTimeout(r, 600));
+          continue;
+        }
+
+        throw new Error(errMsg || `Gemini API call failed with status ${res.status}`);
+      }
+
+      const json = await res.json();
+      const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) throw new Error('No content returned from Gemini API');
+      return rawText;
+    } catch (err: any) {
+      if (err.message?.includes('Invalid Google Gemini API key')) throw err;
+      lastErrorMsg = err.message || 'Gemini error';
+    }
   }
 
-  const json = await res.json();
-  const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!rawText) throw new Error('No content returned from Gemini API');
-  return rawText;
+  throw new Error(lastErrorMsg || 'All Gemini models are temporarily experiencing high demand. Please try again shortly.');
 }
 
 /**
@@ -250,7 +286,7 @@ async function dispatchAIPrompt(
     if (!cleanKey || cleanKey === 'AIzaSy...') {
       throw new Error('MISSING_KEY: Please enter your Google Gemini API key in Settings (gear icon at the top).');
     }
-    return callGemini(prompt, cleanKey, settings.modelName || 'gemini-3.6-flash', imageInlineData);
+    return callGemini(prompt, cleanKey, settings.modelName || 'gemini-2.5-flash', imageInlineData);
   }
 
   if (settings.provider === 'openai') {
