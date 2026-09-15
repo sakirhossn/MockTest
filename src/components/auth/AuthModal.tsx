@@ -181,6 +181,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             </div>
 
+            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 bg-slate-100/70 dark:bg-slate-800/70 px-2.5 py-1.5 rounded-lg border border-slate-200/60 dark:border-slate-700/50">
+              <span>Demo Login:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('admin@mockmaster.com');
+                  setPassword('admin123');
+                }}
+                className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+              >
+                Auto-fill admin@mockmaster.com
+              </button>
+            </div>
+
             <button
               type="submit"
               disabled={loading}
@@ -190,6 +204,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </form>
+
+          {/* 1-Click Demo / Admin Login */}
+          <button
+            type="button"
+            onClick={() => {
+              const adminEmail = 'admin@mockmaster.com';
+              localStorage.setItem('mocktest_user_email', adminEmail);
+              onLoginSuccess(adminEmail);
+              onClose();
+            }}
+            className="w-full py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition flex items-center justify-center gap-2"
+          >
+            <Shield className="w-3.5 h-3.5" />
+            1-Click Admin Sign In (Demo)
+          </button>
 
           {/* Google OAuth button */}
           <div className="relative flex py-1 items-center">
