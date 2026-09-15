@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { History, Trash2, ArrowLeft, RotateCcw, Target, Clock, Trophy } from 'lucide-react';
 import { TestResult, ExamCategory } from '../../types/exam';
-import { getLocalResults, clearTestHistory } from '../../services/storage/historyStore';
+import { getLocalResults, clearTestHistory, deleteTestResult } from '../../services/storage/historyStore';
 import { EXAM_CONFIGS } from '../../data/mockExams';
 
 interface HistoryViewProps {
@@ -19,6 +19,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   useEffect(() => {
     setResults(getLocalResults());
   }, []);
+
+  const handleDeleteOne = (id: string) => {
+    deleteTestResult(id);
+    setResults(getLocalResults());
+  };
 
   const handleClear = () => {
     if (window.confirm('Are you sure you want to clear your test attempt history?')) {
@@ -145,12 +150,21 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                       </span>
                     </td>
                     <td className="py-4 px-4 text-right">
-                      <button
-                        onClick={() => onSelectResult(r)}
-                        className="px-3.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 font-bold transition"
-                      >
-                        View Solutions
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => onSelectResult(r)}
+                          className="px-3.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 font-bold transition"
+                        >
+                          View Solutions
+                        </button>
+                        <button
+                          onClick={() => handleDeleteOne(r.id)}
+                          title="Delete this attempt"
+                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-750 text-slate-400 hover:text-rose-600 hover:border-rose-300 dark:hover:border-rose-800 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

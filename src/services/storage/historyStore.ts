@@ -120,10 +120,9 @@ export async function saveTestResult(result: TestResult): Promise<void> {
 
 export function getLocalResults(): TestResult[] {
   const raw = localStorage.getItem(STORAGE_KEY_RESULTS);
-  if (!raw) {
-    // Seed initial demo test so charts look impressive and informative right away
-    localStorage.setItem(STORAGE_KEY_RESULTS, JSON.stringify(SEED_RESULTS));
-    return SEED_RESULTS;
+  if (raw === null) {
+    localStorage.setItem(STORAGE_KEY_RESULTS, '[]');
+    return [];
   }
   try {
     const parsed = JSON.parse(raw);
@@ -134,7 +133,13 @@ export function getLocalResults(): TestResult[] {
 }
 
 export function clearTestHistory(): void {
-  localStorage.removeItem(STORAGE_KEY_RESULTS);
+  localStorage.setItem(STORAGE_KEY_RESULTS, '[]');
+}
+
+export function deleteTestResult(id: string): void {
+  const current = getLocalResults();
+  const updated = current.filter((r) => r.id !== id);
+  localStorage.setItem(STORAGE_KEY_RESULTS, JSON.stringify(updated));
 }
 
 export interface AggregatedStats {

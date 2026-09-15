@@ -80,8 +80,13 @@ async function callGemini(
   model = 'gemini-3.6-flash',
   imageInlineData?: { mimeType: string; data: string }
 ): Promise<string> {
+  const cleanKey = (apiKey || '').trim();
+  if (!cleanKey || cleanKey === 'AIzaSy...') {
+    throw new Error('Please configure your Google Gemini API key in Settings (gear icon at the top).');
+  }
+
   const activeModel = model.includes('2.0') || model.includes('1.5') ? 'gemini-3.6-flash' : model;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${cleanKey}`;
 
   const parts: any[] = [{ text: prompt }];
   if (imageInlineData) {
@@ -104,13 +109,20 @@ async function callGemini(
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': cleanKey,
+    },
     body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Gemini API call failed with status ${res.status}`);
+    const errMsg = err.error?.message || '';
+    if (errMsg.includes('invalid authentication') || errMsg.includes('API_KEY_INVALID') || res.status === 400 || res.status === 401) {
+      throw new Error('Invalid Google Gemini API key. Please check your API key in Settings (gear icon at the top).');
+    }
+    throw new Error(errMsg || `Gemini API call failed with status ${res.status}`);
   }
 
   const json = await res.json();
@@ -234,10 +246,11 @@ async function dispatchAIPrompt(
   const settings = getStoredAISettings();
 
   if (settings.provider === 'gemini') {
-    if (!settings.geminiApiKey) {
-      throw new Error('MISSING_KEY: Please enter your Google Gemini API key in Settings.');
+    const cleanKey = (settings.geminiApiKey || '').trim();
+    if (!cleanKey || cleanKey === 'AIzaSy...') {
+      throw new Error('MISSING_KEY: Please enter your Google Gemini API key in Settings (gear icon at the top).');
     }
-    return callGemini(prompt, settings.geminiApiKey, settings.modelName || 'gemini-2.0-flash', imageInlineData);
+    return callGemini(prompt, cleanKey, settings.modelName || 'gemini-3.6-flash', imageInlineData);
   }
 
   if (settings.provider === 'openai') {

@@ -6,9 +6,15 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLoginSuccess: (email: string) => void;
+  canClose?: boolean;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({
+  isOpen,
+  onClose,
+  onLoginSuccess,
+  canClose = true,
+}) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -68,9 +74,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
   const handleGoogleLogin = async () => {
     const supabase = getSupabaseClient();
     if (!supabase) {
-      alert('Google OAuth requires Supabase to be configured in Settings. Proceeding in Guest mode.');
-      onLoginSuccess('candidate.google@demo.in');
-      onClose();
+      alert('Google OAuth requires Supabase to be configured in Settings. Proceeding with email login.');
       return;
     }
 
@@ -84,12 +88,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
     }
   };
 
-  const handleGuestContinue = () => {
-    localStorage.setItem('mocktest_user_email', 'guest@aspirant.local');
-    onLoginSuccess('guest@aspirant.local');
-    onClose();
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -99,16 +97,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
             <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
               <Sparkles className="w-4 h-4" />
             </div>
-            <h3 className="font-bold text-base text-slate-900 dark:text-white">
-              {isSignUp ? 'Create Aspirant Account' : 'Sign in to MockMaster'}
-            </h3>
+            <div>
+              <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                {isSignUp ? 'Create Aspirant Account' : 'Sign in to MockMaster'}
+              </h3>
+              {!canClose && (
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                  Please log in to continue
+                </span>
+              )}
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {canClose && (
+            <button
+              onClick={onClose}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Content */}
@@ -219,19 +226,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
             Continue with Google
           </button>
 
-          {/* Guest Mode Direct Access */}
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
-            <button
-              type="button"
-              onClick={handleGuestContinue}
-              className="w-full py-2 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition flex items-center justify-center gap-1.5"
-            >
-              <Shield className="w-3.5 h-3.5" />
-              Continue as Guest (No account needed)
-            </button>
-          </div>
-
-          <div className="text-center text-xs text-slate-500 dark:text-slate-400">
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 text-center text-xs text-slate-500 dark:text-slate-400">
             {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button
               type="button"

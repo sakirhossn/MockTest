@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { HelpCircle } from 'lucide-react';
 import { Navbar } from './components/common/Navbar';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { ExamPortal } from './components/exam/ExamPortal';
@@ -22,11 +23,12 @@ export const App: React.FC = () => {
   const [generatorInitialExam, setGeneratorInitialExam] = useState<ExamCategory>('rrb_ntpc');
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
+  const [confirmExam, setConfirmExam] = useState<ExamCategory | null>(null);
 
-  // User / Auth State
-  const [userEmail, setUserEmail] = useState<string>(
-    localStorage.getItem('mocktest_user_email') || 'candidate@aspirant.local'
-  );
+  // User / Auth State (Login enforced)
+  const [userEmail, setUserEmail] = useState<string | null>(() => {
+    return localStorage.getItem('mocktest_user_email');
+  });
 
   // Dark Mode Theme State
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -115,15 +117,16 @@ export const App: React.FC = () => {
           }}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenAuth={() => setIsAuthOpen(true)}
-          selectedExam={selectedExam}
-          onSelectExam={(exam) => {
-            setSelectedExam(exam);
-            handleStartPreloadedExam(exam);
+          onLogout={() => {
+            localStorage.removeItem('mocktest_user_email');
+            setUserEmail(null);
           }}
+          selectedExam={selectedExam}
+          onSelectExam={(exam) => setSelectedExam(exam)}
           darkMode={darkMode}
           onToggleDarkMode={() => setDarkMode(!darkMode)}
-          userEmail={userEmail}
-          isGuest={userEmail.includes('local') || userEmail.includes('guest')}
+          userEmail={userEmail || undefined}
+          isGuest={!userEmail}
         />
       )}
 
@@ -131,7 +134,7 @@ export const App: React.FC = () => {
       <main className={`flex-1 ${currentView === 'exam' ? 'p-0' : 'max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6'}`}>
         {currentView === 'dashboard' && (
           <Dashboard
-            onStartPreloadedExam={handleStartPreloadedExam}
+            onStartPreloadedExam={(cat) => setConfirmExam(cat)}
             onOpenGeneratorWithExam={handleOpenGeneratorWithExam}
             onOpenGenerator={() => {
               setGeneratorInitialExam(selectedExam);
@@ -151,7 +154,7 @@ export const App: React.FC = () => {
         {currentView === 'exam' && activeTest && (
           <ExamPortal
             test={activeTest}
-            candidateName={userEmail.split('@')[0]}
+            candidateName={(userEmail || 'Candidate').split('@')[0]}
             onFinishTest={handleFinishTest}
             onExitWithoutSubmit={() => setCurrentView('dashboard')}
           />
@@ -162,8 +165,7 @@ export const App: React.FC = () => {
             result={activeResult}
             test={activeTest}
             onRetake={() => {
-              setCurrentView('exam');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
+              setConfirmExam(activeTest.examType);
             }}
             onGoHome={() => setCurrentView('dashboard')}
           />
@@ -186,6 +188,69 @@ export const App: React.FC = () => {
         </footer>
       )}
 
+      {/* Confirmation Modal before starting test */}
+      {confirmExam && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                <HelpCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                  Start {EXAM_CONFIGS.find((c) => c.id === confirmExam)?.shortName} Mock Test?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Please confirm to begin the timed test session.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 text-xs text-slate-600 dark:text-slate-300 space-y-1.5 border border-slate-200 dark:border-slate-800">
+              <div className="flex justify-between">
+                <span>Duration:</span>
+                <span className="font-bold text-slate-900 dark:text-white">
+                  {PRELOADED_TESTS.find((t) => t.examType === confirmExam)?.durationMinutes || 20} Minutes
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Total Questions:</span>
+                <span className="font-bold text-slate-900 dark:text-white">
+                  {PRELOADED_TESTS.find((t) => t.examType === confirmExam)?.questions.length || 10} MCQs
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Marking Scheme:</span>
+                <span className="font-bold text-slate-900 dark:text-white">
+                  +{EXAM_CONFIGS.find((c) => c.id === confirmExam)?.marksPerQuestion || 1} | -{( (EXAM_CONFIGS.find((c) => c.id === confirmExam)?.marksPerQuestion || 1) * (EXAM_CONFIGS.find((c) => c.id === confirmExam)?.negativeMarkRatio || 0.25) ).toFixed(2)} Neg
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setConfirmExam(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-400"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cat = confirmExam;
+                  setConfirmExam(null);
+                  handleStartPreloadedExam(cat);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 transition"
+              >
+                Yes, Start Mock Test
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Generator Modal */}
       <ExamGeneratorModal
         isOpen={isGeneratorOpen}
@@ -205,11 +270,15 @@ export const App: React.FC = () => {
         }}
       />
 
-      {/* Auth Modal */}
+      {/* Auth Modal (Enforced if not logged in) */}
       <AuthModal
-        isOpen={isAuthOpen}
+        isOpen={isAuthOpen || !userEmail}
+        canClose={!!userEmail}
         onClose={() => setIsAuthOpen(false)}
-        onLoginSuccess={(email) => setUserEmail(email)}
+        onLoginSuccess={(email) => {
+          setUserEmail(email);
+          setIsAuthOpen(false);
+        }}
       />
     </div>
   );

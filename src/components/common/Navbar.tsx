@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   FilePlus,
   BookOpen,
+  LogOut,
 } from 'lucide-react';
 import { ExamCategory } from '../../types/exam';
 import { EXAM_CONFIGS } from '../../data/mockExams';
@@ -19,6 +20,7 @@ interface NavbarProps {
   onOpenGenerator: () => void;
   onOpenSettings: () => void;
   onOpenAuth: () => void;
+  onLogout?: () => void;
   selectedExam: ExamCategory;
   onSelectExam: (exam: ExamCategory) => void;
   darkMode: boolean;
@@ -33,6 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenGenerator,
   onOpenSettings,
   onOpenAuth,
+  onLogout,
   selectedExam,
   onSelectExam,
   darkMode,
@@ -153,17 +156,28 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {/* User Auth Profile Trigger */}
-          <button
-            onClick={onOpenAuth}
-            className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-850 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300 transition"
-          >
-            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-[11px] font-bold">
-              {userEmail ? userEmail.charAt(0).toUpperCase() : 'G'}
-            </div>
-            <span className="hidden md:inline max-w-[90px] truncate">
-              {userEmail || 'Guest Mode'}
-            </span>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onOpenAuth}
+              className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-850 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300 transition"
+            >
+              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-[11px] font-bold">
+                {userEmail ? userEmail.charAt(0).toUpperCase() : 'U'}
+              </div>
+              <span className="hidden md:inline max-w-[90px] truncate">
+                {userEmail || 'Profile'}
+              </span>
+            </button>
+            {userEmail && onLogout && (
+              <button
+                onClick={onLogout}
+                title="Sign Out"
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </header>
