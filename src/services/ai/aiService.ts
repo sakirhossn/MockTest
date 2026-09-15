@@ -24,8 +24,8 @@ export function getStoredAISettings(): AISettings {
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      const rawModel = parsed.modelName || 'gemini-2.5-flash';
-      const cleanModel = rawModel.includes('3.6') || rawModel.includes('3.8') || rawModel.includes('1.5') ? 'gemini-2.5-flash' : rawModel;
+      const rawModel = parsed.modelName || 'gemini-3.6-flash';
+      const cleanModel = rawModel.includes('2.0') || rawModel.includes('1.5') || rawModel.includes('2.5') ? 'gemini-3.6-flash' : rawModel;
       return {
         ...parsed,
         modelName: cleanModel,
@@ -43,7 +43,7 @@ export function getStoredAISettings(): AISettings {
     geminiApiKey: localStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || envGemini,
     openaiApiKey: localStorage.getItem(STORAGE_KEYS.OPENAI_KEY) || envOpenai,
     claudeApiKey: localStorage.getItem(STORAGE_KEYS.CLAUDE_KEY) || envClaude,
-    modelName: 'gemini-2.5-flash',
+    modelName: 'gemini-3.6-flash',
     temperature: 0.2,
   };
 }
@@ -77,7 +77,7 @@ function cleanJsonString(raw: string): string {
 async function callGemini(
   prompt: string,
   apiKey: string,
-  model = 'gemini-2.5-flash',
+  model = 'gemini-3.6-flash',
   imageInlineData?: { mimeType: string; data: string }
 ): Promise<string> {
   const cleanKey = (apiKey || '').trim();
@@ -85,12 +85,12 @@ async function callGemini(
     throw new Error('Please configure your Google Gemini API key in Settings (gear icon at the top).');
   }
 
-  const primaryModel = model.includes('3.6') || model.includes('3.8') ? 'gemini-2.5-flash' : model;
+  const primaryModel = model.includes('2.0') || model.includes('1.5') || model.includes('2.5') ? 'gemini-3.6-flash' : model;
   const candidates = [
     primaryModel,
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
+    'gemini-3.6-flash',
+    'gemini-3.8-flash',
+    'gemini-3.5-flash-lite',
   ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
   let lastErrorMsg = '';
@@ -143,10 +143,12 @@ async function callGemini(
           res.status === 429 ||
           errMsg.toLowerCase().includes('high demand') ||
           errMsg.toLowerCase().includes('resource_exhausted') ||
-          errMsg.toLowerCase().includes('overloaded')
+          errMsg.toLowerCase().includes('overloaded') ||
+          errMsg.toLowerCase().includes('no longer available') ||
+          errMsg.toLowerCase().includes('not found')
         ) {
           lastErrorMsg = errMsg;
-          console.warn(`Model ${m} busy (${errMsg}). Retrying with next fallback model...`);
+          console.warn(`Model ${m} unavailable (${errMsg}). Retrying with next fallback model...`);
           await new Promise((r) => setTimeout(r, 600));
           continue;
         }

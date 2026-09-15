@@ -16,10 +16,12 @@ import {
   Menu,
   X,
   User,
+  FileDown,
 } from 'lucide-react';
 import { MockTest, UserAnswerState, QuestionStatus, TestResult, SectionBreakdown } from '../../types/exam';
 import { MathRenderer } from '../common/MathRenderer';
 import { EXAM_CONFIGS } from '../../data/mockExams';
+import { downloadMockPaperPDF } from '../../utils/pdfExport';
 
 interface ExamPortalProps {
   test: MockTest;
@@ -474,9 +476,20 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
           })}
         </div>
 
-        {/* Question Counter Indicator */}
-        <div className="text-xs font-bold text-slate-500 dark:text-slate-400 hidden sm:block whitespace-nowrap ml-4">
-          Question {currentIndex + 1} of {test.questions.length}
+        {/* Action Controls & Question Counter Indicator */}
+        <div className="flex items-center gap-2 sm:gap-3 ml-4">
+          <button
+            type="button"
+            onClick={() => downloadMockPaperPDF(test)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition whitespace-nowrap shadow-xs"
+            title="Download full question paper with answer key & solutions on the last page"
+          >
+            <FileDown className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <span>Download Paper (PDF)</span>
+          </button>
+          <div className="text-xs font-bold text-slate-500 dark:text-slate-400 hidden sm:block whitespace-nowrap">
+            Question {currentIndex + 1} of {test.questions.length}
+          </div>
         </div>
       </div>
 
