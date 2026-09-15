@@ -10,6 +10,7 @@ import { SettingsModal } from './components/settings/SettingsModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { ExamCategory, MockTest, TestResult } from './types/exam';
 import { PRELOADED_TESTS, EXAM_CONFIGS } from './data/mockExams';
+import { getSupabaseClient } from './services/supabase/supabaseClient';
 
 export const App: React.FC = () => {
   // Navigation & Active Test State
@@ -46,6 +47,30 @@ export const App: React.FC = () => {
       localStorage.setItem('mocktest_theme', 'light');
     }
   }, [darkMode]);
+
+  // Sync Supabase auth session (e.g. from email verification link or OAuth redirect)
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.email) {
+        setUserEmail(session.user.email);
+        localStorage.setItem('mocktest_user_email', session.user.email);
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user?.email) {
+        setUserEmail(session.user.email);
+        localStorage.setItem('mocktest_user_email', session.user.email);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Start preloaded authentic exam immediately
   const handleStartPreloadedExam = (category: ExamCategory) => {
@@ -117,7 +142,11 @@ export const App: React.FC = () => {
           }}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenAuth={() => setIsAuthOpen(true)}
-          onLogout={() => {
+          onLogout={async () => {
+            const supabase = getSupabaseClient();
+            if (supabase) {
+              await supabase.auth.signOut().catch(() => {});
+            }
             localStorage.removeItem('mocktest_user_email');
             setUserEmail(null);
           }}

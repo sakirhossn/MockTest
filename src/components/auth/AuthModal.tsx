@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Mail, Lock, User, Sparkles, Shield, ArrowRight } from 'lucide-react';
+import { X, Mail, Lock, User, Sparkles, ArrowRight } from 'lucide-react';
 import { getSupabaseClient } from '../../services/supabase/supabaseClient';
 
 interface AuthModalProps {
@@ -41,16 +41,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       if (isSignUp) {
+        const siteUrl = window.location.origin + window.location.pathname;
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: name } },
+          options: {
+            data: { full_name: name },
+            emailRedirectTo: siteUrl,
+          },
         });
         if (error) throw error;
-        if (data.user) {
+        if (data.session && data.user) {
           localStorage.setItem('mocktest_user_email', data.user.email || email);
           onLoginSuccess(data.user.email || email);
           onClose();
+        } else {
+          setErrorMsg('Account created! Check your email to confirm, or disable "Confirm email" in Supabase to sign in instantly.');
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -74,17 +80,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleGoogleLogin = async () => {
     const supabase = getSupabaseClient();
     if (!supabase) {
-      alert('Google OAuth requires Supabase to be configured in Settings. Proceeding with email login.');
+      alert('Google OAuth requires Supabase to be configured in Settings.');
       return;
     }
 
     try {
-      await supabase.auth.signInWithOAuth({
+      const siteUrl = window.location.origin + window.location.pathname;
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: window.location.origin },
+        options: { redirectTo: siteUrl },
       });
+      if (error) throw error;
     } catch (err: any) {
-      setErrorMsg(err.message || 'Google login failed.');
+      setErrorMsg(err.message || 'Google login failed. Ensure Google provider is enabled in Supabase.');
     }
   };
 
@@ -181,20 +189,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 bg-slate-100/70 dark:bg-slate-800/70 px-2.5 py-1.5 rounded-lg border border-slate-200/60 dark:border-slate-700/50">
-              <span>Demo Login:</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('admin@mockmaster.com');
-                  setPassword('admin123');
-                }}
-                className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
-              >
-                Auto-fill admin@mockmaster.com
-              </button>
-            </div>
-
             <button
               type="submit"
               disabled={loading}
@@ -204,21 +198,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </form>
-
-          {/* 1-Click Demo / Admin Login */}
-          <button
-            type="button"
-            onClick={() => {
-              const adminEmail = 'admin@mockmaster.com';
-              localStorage.setItem('mocktest_user_email', adminEmail);
-              onLoginSuccess(adminEmail);
-              onClose();
-            }}
-            className="w-full py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition flex items-center justify-center gap-2"
-          >
-            <Shield className="w-3.5 h-3.5" />
-            1-Click Admin Sign In (Demo)
-          </button>
 
           {/* Google OAuth button */}
           <div className="relative flex py-1 items-center">
