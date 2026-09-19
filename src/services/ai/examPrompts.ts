@@ -95,24 +95,27 @@ ${JSON_SCHEMA_SPEC}`;
  */
 export function buildOCRExtractionPrompt(params: OCRGenerationParams): string {
   const { documentText, targetExam, questionCount } = params;
-  const countInstruction = questionCount ? `Generate up to ${questionCount} questions.` : 'Extract all valid questions found.';
+  const countInstruction = questionCount
+    ? `Extract and generate up to ${questionCount} questions.`
+    : 'CRITICAL: Extract ALL available questions found in the document. Do not limit to 10 questions and do not skip any question. If the document contains 20, 35, or 60 questions, extract EVERY SINGLE ONE of them.';
 
   return `You are analyzing study material / question paper ${documentText ? 'text extracted from an uploaded document' : 'from an uploaded document image'}.
 
-Your task is to extract, clean, structure, and convert this content into a standardized interactive Multiple Choice Mock Test.
+Your task is to extract, clean, structure, and convert this content into a standardized interactive Multiple Choice Mock Test containing ALL questions from the document.
 
 Target Exam: ${targetExam || 'Indian Competitive Exam (RRB/SSC/IBPS/WBPSC)'}
 ${countInstruction}
 
-${documentText ? `Document Content:\n---\n${documentText.slice(0, 12000)}\n---` : 'Please inspect the provided image carefully and extract all questions.'}
+${documentText ? `Document Content:\n---\n${documentText.slice(0, 100000)}\n---` : 'Please inspect the provided image carefully and extract all questions.'}
 
 INSTRUCTIONS:
-1. Parse every question into clear, readable question text.
-2. If mathematical symbols, fractions, powers, or geometric figures are described in text, convert them into standard KaTeX LaTeX formulas ($...$).
-3. Ensure each question has exactly 4 clean options. If the original text only has 2 or 3 options, generate authentic distractors so there are exactly 4 distinct choices.
-4. Identify the correct answer (0, 1, 2, or 3).
-5. Write a clear, step-by-step explanatory solution for each question.
-6. Return ONLY valid JSON matching this schema:
+1. Extract ALL questions found in the provided text. Do not stop after 10 questions.
+2. Parse every question into clear, readable question text.
+3. If mathematical symbols, fractions, powers, or geometric figures are described in text, convert them into standard KaTeX LaTeX formulas ($...$).
+4. Ensure each question has exactly 4 clean options. If the original text only has 2 or 3 options, generate authentic distractors so there are exactly 4 distinct choices.
+5. Identify the correct answer (0, 1, 2, or 3).
+6. Write a clear, step-by-step explanatory solution for each question.
+7. Return ONLY valid JSON matching this schema:
 ${JSON_SCHEMA_SPEC}`;
 }
 

@@ -12,11 +12,17 @@ import {
   FileUp,
   Image as ImageIcon,
   Loader2,
+  Trash2,
+  Plus,
+  FileDown,
+  Play,
+  ArrowLeft,
 } from 'lucide-react';
 import { EXAM_CONFIGS } from '../../data/mockExams';
-import { ExamCategory, MockTest } from '../../types/exam';
+import { ExamCategory, MockTest, Question } from '../../types/exam';
 import { generateAITest, generateTestFromDocument } from '../../services/ai/aiService';
 import { extractTextFromPDF, readImageAsDataUrl } from '../../services/ocr/documentParser';
+import { downloadMockPaperPDF } from '../../utils/pdfExport';
 
 interface ExamGeneratorModalProps {
   isOpen: boolean;
@@ -32,6 +38,7 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
   initialExam = 'rrb_ntpc',
 }) => {
   const [activeTab, setActiveTab] = useState<'auto' | 'document'>('auto');
+  const [reviewTest, setReviewTest] = useState<MockTest | null>(null);
 
   // Mode 1 Form State
   const [selectedExam, setSelectedExam] = useState<ExamCategory>(initialExam);
@@ -104,8 +111,7 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
         customTopic: customTopic.trim() || undefined,
       });
 
-      onTestGenerated(test);
-      onClose();
+      setReviewTest(test);
     } catch (err: any) {
       setErrorMsg(err.message || 'Test generation failed. Please check your API key in Settings.');
     } finally {
@@ -122,20 +128,19 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
 
     setErrorMsg('');
     setIsGenerating(true);
-    setLoadingMessage('Extracting study content and structuring interactive MCQs...');
+    setLoadingMessage('Extracting all questions from document and structuring interactive MCQs...');
 
     try {
       const test = await generateTestFromDocument(
         {
           documentText: extractedPdfText || undefined,
           targetExam: currentConfig.name,
-          questionCount: 10,
+          questionCount: undefined, // Extract ALL questions found in PDF/document
         },
         uploadedFile.type.startsWith('image/') ? uploadedFile : undefined
       );
 
-      onTestGenerated(test);
-      onClose();
+      setReviewTest(test);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to parse document. Please check API Key in Settings.');
     } finally {
@@ -143,31 +148,285 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
     }
   };
 
+  const handleUpdateQuestion = (index: number, updated: Partial<Question>) => {
+    if (!reviewTest) return;
+    const newQuestions = [...reviewTest.questions];
+    newQuestions[index] = { ...newQuestions[index], ...updated };
+    setReviewTest({
+      ...reviewTest,
+      questions: newQuestions,
+      totalMarks: newQuestions.length * (reviewTest.marksPerQuestion || 1),
+    });
+  };
+
+  const handleUpdateOption = (qIndex: number, optIndex: number, val: string) => {
+    if (!reviewTest) return;
+    const q = reviewTest.questions[qIndex];
+    const newOpts: [string, string, string, string] = [
+      optIndex === 0 ? val : q.options[0],
+      optIndex === 1 ? val : q.options[1],
+      optIndex === 2 ? val : q.options[2],
+      optIndex === 3 ? val : q.options[3],
+    ];
+    handleUpdateQuestion(qIndex, { options: newOpts });
+  };
+
+  const handleDeleteQuestion = (index: number) => {
+    if (!reviewTest) return;
+    const newQuestions = reviewTest.questions.filter((_, idx) => idx !== index);
+    setReviewTest({
+      ...reviewTest,
+      questions: newQuestions,
+      totalMarks: newQuestions.length * (reviewTest.marksPerQuestion || 1),
+    });
+  };
+
+  const handleAddQuestion = () => {
+    if (!reviewTest) return;
+    const newQ: Question = {
+      id: `custom-${Date.now()}-${reviewTest.questions.length + 1}`,
+      section: reviewTest.sections[0] || 'General',
+      questionText: 'New Multiple Choice Question',
+      options: ['Option A', 'Option B', 'Option C', 'Option D'],
+      correctAnswer: 0,
+      explanation: 'Detailed solution for this question.',
+      difficulty: 'medium',
+      topic: 'General',
+    };
+    const newQuestions = [...reviewTest.questions, newQ];
+    setReviewTest({
+      ...reviewTest,
+      questions: newQuestions,
+      totalMarks: newQuestions.length * (reviewTest.marksPerQuestion || 1),
+    });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/20">
-              <Sparkles className="w-5 h-5" />
+      <div className={`w-full ${reviewTest ? 'max-w-4xl' : 'max-w-2xl'} bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh] transition-all duration-200`}>
+        {reviewTest ? (
+          <>
+            {/* Review & Edit Header */}
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-850/50">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setReviewTest(null)}
+                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition"
+                  title="Back to Generation / Upload"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <div>
+                  <h3 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>Review &amp; Edit Questions</span>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-black border border-indigo-200 dark:border-indigo-800">
+                      {reviewTest.questions.length} Questions
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Edit questions, options, or correct answers before starting or downloading
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadMockPaperPDF(reviewTest)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-xs transition"
+                  title="Download clean Question Paper with Solutions on the last page"
+                >
+                  <FileDown className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span className="hidden sm:inline">Download Paper (PDF)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onTestGenerated(reviewTest);
+                    onClose();
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Start Test</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
-            <div>
-              <h3 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white">
-                Exam Generation Studio
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Generate syllabus-aligned mocks or convert documents to interactive tests
-              </p>
+
+            {/* Questions List Editor */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {reviewTest.questions.map((q, qIdx) => (
+                <div
+                  key={q.id || qIdx}
+                  className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 shadow-xs space-y-3.5"
+                >
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-200/60 dark:border-slate-750 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-lg bg-indigo-600 text-white font-black text-xs">
+                        Q{qIdx + 1}
+                      </span>
+                      <input
+                        type="text"
+                        value={q.section || 'General'}
+                        onChange={(e) => handleUpdateQuestion(qIdx, { section: e.target.value })}
+                        placeholder="Section Name"
+                        className="text-[11px] font-semibold px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteQuestion(qIdx)}
+                      className="flex items-center gap-1 text-[11px] font-semibold text-rose-600 hover:text-rose-700 dark:text-rose-400 px-2 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                      title="Delete this question"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </button>
+                  </div>
+
+                  {/* Question Text */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Question Text:
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={q.questionText}
+                      onChange={(e) => handleUpdateQuestion(qIdx, { questionText: e.target.value })}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Options Grid */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Options (Select radio for Correct Answer):
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {['A', 'B', 'C', 'D'].map((letter, oIdx) => {
+                        const isCorrect = q.correctAnswer === oIdx;
+                        return (
+                          <div
+                            key={letter}
+                            className={`flex items-center gap-2 p-2 rounded-xl border transition ${
+                              isCorrect
+                                ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 ring-1 ring-emerald-500'
+                                : 'border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-900'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name={`correct-ans-${qIdx}`}
+                              checked={isCorrect}
+                              onChange={() => handleUpdateQuestion(qIdx, { correctAnswer: oIdx as (0 | 1 | 2 | 3) })}
+                              className="w-4 h-4 text-emerald-600 accent-emerald-600 cursor-pointer"
+                            />
+                            <span className={`text-xs font-bold ${isCorrect ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500'}`}>
+                              ({letter})
+                            </span>
+                            <input
+                              type="text"
+                              value={q.options[oIdx] || ''}
+                              onChange={(e) => handleUpdateOption(qIdx, oIdx, e.target.value)}
+                              className="flex-1 px-2 py-1 text-xs bg-transparent border-0 focus:ring-0 focus:outline-none text-slate-800 dark:text-slate-200 font-medium"
+                              placeholder={`Option ${letter}`}
+                            />
+                            {isCorrect && (
+                              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded">
+                                Correct
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Explanation */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Step-by-Step Solution / Explanation:
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={q.explanation || ''}
+                      onChange={(e) => handleUpdateQuestion(qIdx, { explanation: e.target.value })}
+                      placeholder="Step-by-step solution..."
+                      className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={handleAddQuestion}
+                className="w-full py-3 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-800 hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 text-xs font-bold flex items-center justify-center gap-2 transition"
+              >
+                <Plus className="w-4 h-4" />
+                Add Another Question
+              </button>
             </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+
+            {/* Review Footer */}
+            <div className="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/70 flex items-center justify-between">
+              <div className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+                Total: <strong className="text-slate-900 dark:text-white">{reviewTest.questions.length}</strong> questions • <strong className="text-slate-900 dark:text-white">{reviewTest.totalMarks}</strong> marks
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadMockPaperPDF(reviewTest)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 text-xs font-bold text-slate-700 dark:text-slate-200 transition shadow-xs"
+                >
+                  <FileDown className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  Download Paper (PDF)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onTestGenerated(reviewTest);
+                    onClose();
+                  }}
+                  className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  Start Mock Test
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/20">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white">
+                    Exam Generation Studio
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Generate syllabus-aligned mocks or convert documents to interactive tests
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
         {/* Tab Controls */}
         <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/50 p-1.5 gap-1.5">
@@ -501,7 +760,9 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
             </form>
           )}
         </div>
-      </div>
-    </div>
+      </>
+    )}
+  </div>
+</div>
   );
 };
