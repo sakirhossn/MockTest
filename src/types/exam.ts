@@ -135,6 +135,7 @@ export interface TestResult {
   sectionBreakdown: SectionBreakdown[];
   userAnswers: Record<string, UserAnswerState>;
   weaknessReport: AIWeaknessFeedback[];
+  testQuestions?: Question[];
   speedPerQuestion: {
     questionId: string;
     seconds: number;

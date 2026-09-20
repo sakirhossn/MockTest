@@ -169,7 +169,9 @@ export function createMockTestFromBankQuestions(
   title: string,
   questions: BankQuestion[],
   examCategory?: ExamCategory,
-  durationMinutes?: number
+  durationMinutes?: number,
+  marksPerQuestion?: number,
+  negativeMark?: number
 ): MockTest {
   const sectionsSet = new Set<string>();
   const convertedQuestions: Question[] = questions.map((bq, idx) => {
@@ -204,6 +206,8 @@ export function createMockTestFromBankQuestions(
   const sections = Array.from(sectionsSet);
   const totalQ = convertedQuestions.length;
   const autoDuration = durationMinutes || Math.max(10, Math.round(totalQ * 1.5));
+  const mpq = marksPerQuestion || 1;
+  const neg = typeof negativeMark === 'number' ? negativeMark : 0.25;
 
   return {
     id: `test-bank-${Date.now()}`,
@@ -211,9 +215,9 @@ export function createMockTestFromBankQuestions(
     examType: examCategory || (questions[0]?.examSlug as ExamCategory) || 'rrb_ntpc',
     description: `Generated from verified Question Bank with ${totalQ} questions across ${sections.join(', ')}.`,
     durationMinutes: autoDuration,
-    totalMarks: totalQ,
-    marksPerQuestion: 1,
-    negativeMark: 0.25,
+    totalMarks: totalQ * mpq,
+    marksPerQuestion: mpq,
+    negativeMark: neg,
     sections: sections.length > 0 ? sections : ['General'],
     questions: convertedQuestions,
     createdAt: new Date().toISOString(),

@@ -222,7 +222,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
               <span>Target Exam Portals</span>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800">
-                14 Official Presets
+                {EXAM_PRESETS.length} Official Presets
               </span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">

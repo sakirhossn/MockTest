@@ -42,6 +42,7 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
   const [activeTab, setActiveTab] = useState<'auto' | 'document'>('auto');
   const [reviewTest, setReviewTest] = useState<MockTest | null>(null);
   const [isSavedToBank, setIsSavedToBank] = useState(false);
+  const [activeBankSetId, setActiveBankSetId] = useState<string>('');
 
   // Mode 1 Form State
   const [selectedExam, setSelectedExam] = useState<ExamCategory>(initialExam);
@@ -143,11 +144,13 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
         uploadedFile.type.startsWith('image/') ? uploadedFile : undefined
       );
 
+      test.examType = selectedExam;
       setReviewTest(test);
 
       // Automatically store extracted questions into Question Bank
       try {
-        const setId = `set-${Date.now()}`;
+        const setId = activeBankSetId || `set-${Date.now()}`;
+        setActiveBankSetId(setId);
         const bankQuestions: BankQuestion[] = test.questions.map((q, idx) => ({
           id: `bank-q-${Date.now()}-${idx + 1}`,
           examSlug: test.examType,
@@ -190,7 +193,8 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
 
   const handleSaveToQuestionBank = () => {
     if (!reviewTest) return;
-    const setId = `set-${Date.now()}`;
+    const setId = activeBankSetId || `set-${Date.now()}`;
+    setActiveBankSetId(setId);
     const bankQuestions: BankQuestion[] = reviewTest.questions.map((q, idx) => ({
       id: `bank-q-${Date.now()}-${idx + 1}`,
       examSlug: reviewTest.examType,
@@ -227,6 +231,7 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
     if (!reviewTest) return;
     const newQuestions = [...reviewTest.questions];
     newQuestions[index] = { ...newQuestions[index], ...updated };
+    setIsSavedToBank(false);
     setReviewTest({
       ...reviewTest,
       questions: newQuestions,
@@ -249,6 +254,7 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
   const handleDeleteQuestion = (index: number) => {
     if (!reviewTest) return;
     const newQuestions = reviewTest.questions.filter((_, idx) => idx !== index);
+    setIsSavedToBank(false);
     setReviewTest({
       ...reviewTest,
       questions: newQuestions,
@@ -269,6 +275,7 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
       topic: 'General',
     };
     const newQuestions = [...reviewTest.questions, newQ];
+    setIsSavedToBank(false);
     setReviewTest({
       ...reviewTest,
       questions: newQuestions,

@@ -84,12 +84,16 @@ export const App: React.FC = () => {
     const cfg = EXAM_CONFIGS.find((c) => c.id === category);
     const bankQs = getBankQuestions({ examSlug: category });
     const pool = bankQs.length > 0 ? bankQs : getBankQuestions().slice(0, 10);
+    const mpq = cfg?.marksPerQuestion || 1;
+    const neg = (cfg?.marksPerQuestion || 1) * (cfg?.negativeMarkRatio || 0.25);
 
     return createMockTestFromBankQuestions(
       `${cfg?.shortName || category.toUpperCase()} Full Live Mock Test`,
       pool,
       category,
-      cfg?.durationMinutes || 60
+      cfg?.durationMinutes || 60,
+      mpq,
+      neg
     );
   };
 
@@ -146,18 +150,23 @@ export const App: React.FC = () => {
     } else if (activeTest && activeTest.id === result.testId) {
       // Keep existing active test
     } else {
-      // Create fallback container
+      // Use preserved testQuestions from result or fallback to exam preloaded questions
+      const questions =
+        result.testQuestions && result.testQuestions.length > 0
+          ? result.testQuestions
+          : (PRELOADED_TESTS.find((t) => t.examType === result.examType) || PRELOADED_TESTS[0]).questions;
+
       setActiveTest({
         id: result.testId,
         title: result.testTitle,
         examType: result.examType,
         description: 'Completed Test Review',
-        durationMinutes: Math.round(result.timeTakenSeconds / 60),
+        durationMinutes: Math.round(result.timeTakenSeconds / 60) || 20,
         totalMarks: result.maxScore,
         marksPerQuestion: 1,
         negativeMark: 0.25,
         sections: result.sectionBreakdown.map((s) => s.sectionName),
-        questions: (PRELOADED_TESTS.find((t) => t.examType === result.examType) || PRELOADED_TESTS[0]).questions,
+        questions,
         createdAt: result.completedAt,
       });
     }
@@ -285,7 +294,8 @@ export const App: React.FC = () => {
               <div className="flex justify-between">
                 <span>Duration:</span>
                 <span className="font-bold text-slate-900 dark:text-white">
-                  {EXAM_CONFIGS.find((c) => c.id === confirmExam)?.durationMinutes || 60} Minutes
+                  {PRELOADED_TESTS.find((t) => t.examType === confirmExam)?.durationMinutes ||
+                   EXAM_CONFIGS.find((c) => c.id === confirmExam)?.durationMinutes || 60} Minutes
                 </span>
               </div>
               <div className="flex justify-between">

@@ -393,10 +393,15 @@ export async function generateTestFromDocument(
       topic: q.topic || 'Document Extraction',
     }));
 
+    const matchedConfig = EXAM_CONFIGS.find(
+      (c) => c.id === params.targetExam || c.name === params.targetExam
+    );
+    const examSlug = matchedConfig?.id || (params.targetExam as any) || 'custom_uploaded';
+
     return {
       id: `doc-test-${Date.now()}`,
       title: parsed.title || 'Document Extracted Mock Test',
-      examType: (params.targetExam as any) || 'custom_uploaded',
+      examType: examSlug,
       description: parsed.description || 'Structured interactive test generated from uploaded study document/image.',
       durationMinutes: parsed.durationMinutes || 30,
       totalMarks: normalizedQuestions.length,

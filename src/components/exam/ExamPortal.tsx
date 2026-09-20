@@ -313,7 +313,10 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
     const attemptedCount = correctCount + incorrectCount;
     const accuracy = attemptedCount > 0 ? Math.round((correctCount / attemptedCount) * 100) : 0;
 
-    const clearedCutoff = finalScore >= (examConfig?.expectedCutoffs?.general || 0);
+    const fullExamMarks = (examConfig?.totalQuestions || 100) * (examConfig?.marksPerQuestion || 1);
+    const cutoffProportion = (examConfig?.expectedCutoffs?.general || 0) / (fullExamMarks || 1);
+    const scaledCutoff = cutoffProportion * maxScore;
+    const clearedCutoff = finalScore >= scaledCutoff;
 
     const result: TestResult = {
       id: `result-${Date.now()}`,
@@ -338,6 +341,7 @@ export const ExamPortal: React.FC<ExamPortalProps> = ({
       userAnswers,
       weaknessReport: [],
       speedPerQuestion,
+      testQuestions: test.questions,
     };
 
     onFinishTest(result);
