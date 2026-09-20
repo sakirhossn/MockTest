@@ -15,18 +15,23 @@ export interface BankFilter {
 }
 
 /**
+ * Retrieve user-saved bank questions from localStorage
+ */
+export function getUserBankQuestions(): BankQuestion[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_BANK_QUESTIONS);
+    return raw ? JSON.parse(raw) : [];
+  } catch (err) {
+    console.warn('Failed to parse bank questions from localStorage', err);
+    return [];
+  }
+}
+
+/**
  * Retrieve all questions in the bank (seed + user created/imported)
  */
 export function getBankQuestions(filter?: BankFilter): BankQuestion[] {
-  let userQuestions: BankQuestion[] = [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_BANK_QUESTIONS);
-    if (raw) {
-      userQuestions = JSON.parse(raw);
-    }
-  } catch (err) {
-    console.warn('Failed to parse bank questions from localStorage', err);
-  }
+  const userQuestions = getUserBankQuestions();
 
   // Combine seed and user questions (user questions take precedence on duplicate id)
   const userIds = new Set(userQuestions.map((q) => q.id));
@@ -77,6 +82,23 @@ export function saveBankQuestion(question: BankQuestion): void {
       existing.unshift(question);
     }
     localStorage.setItem(STORAGE_KEY_BANK_QUESTIONS, JSON.stringify(existing));
+
+    // Try cloud sync if logged in
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) {
+          Promise.resolve(
+            supabase.from('user_bank_questions').upsert({
+              id: question.id,
+              user_id: user.id,
+              question_data: question,
+              updated_at: new Date().toISOString(),
+            })
+          ).catch((err: any) => console.warn('Supabase user_bank_questions save error:', err));
+        }
+      }).catch(() => {});
+    }
   } catch (err) {
     console.error('Failed to save question to bank', err);
   }
@@ -92,6 +114,11 @@ export function deleteBankQuestion(id: string): void {
     const existing: BankQuestion[] = JSON.parse(raw);
     const filtered = existing.filter((q) => q.id !== id);
     localStorage.setItem(STORAGE_KEY_BANK_QUESTIONS, JSON.stringify(filtered));
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      Promise.resolve(supabase.from('user_bank_questions').delete().eq('id', id)).catch(() => {});
+    }
   } catch (err) {
     console.error('Failed to delete question from bank', err);
   }
@@ -124,12 +151,13 @@ export function saveQuestionSet(set: QuestionSet, questions?: BankQuestion[]): v
     }
     localStorage.setItem(STORAGE_KEY_QUESTION_SETS, JSON.stringify(sets));
 
+    let taggedQuestions: BankQuestion[] = [];
     if (questions && questions.length > 0) {
       const raw = localStorage.getItem(STORAGE_KEY_BANK_QUESTIONS);
       const existing: BankQuestion[] = raw ? JSON.parse(raw) : [];
       // Remove previous questions belonging to this set to avoid duplicates
       const others = existing.filter((q) => q.questionSetId !== set.id);
-      const taggedQuestions = questions.map((q) => ({
+      taggedQuestions = questions.map((q) => ({
         ...q,
         questionSetId: set.id,
       }));
@@ -137,6 +165,29 @@ export function saveQuestionSet(set: QuestionSet, questions?: BankQuestion[]): v
         STORAGE_KEY_BANK_QUESTIONS,
         JSON.stringify([...taggedQuestions, ...others])
       );
+    } else {
+      taggedQuestions = getUserBankQuestions().filter((q) => q.questionSetId === set.id);
+    }
+
+    // Try cloud sync if Supabase is connected
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) {
+          Promise.resolve(
+            supabase.from('question_sets').upsert({
+              id: set.id,
+              user_id: user.id,
+              title: set.name,
+              exam_slug: set.examSlug,
+              question_count: set.questionCount || taggedQuestions.length,
+              set_data: set,
+              questions: taggedQuestions,
+              updated_at: new Date().toISOString(),
+            })
+          ).catch((err: any) => console.warn('Supabase question_sets upsert error:', err));
+        }
+      }).catch(() => {});
     }
   } catch (err) {
     console.error('Failed to save question set', err);
@@ -157,8 +208,150 @@ export function deleteQuestionSet(setId: string): void {
       const filtered = existing.filter((q) => q.questionSetId !== setId);
       localStorage.setItem(STORAGE_KEY_BANK_QUESTIONS, JSON.stringify(filtered));
     }
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      Promise.resolve(supabase.from('question_sets').delete().eq('id', setId)).catch(() => {});
+    }
   } catch (err) {
     console.error('Failed to delete question set', err);
+  }
+}
+
+/**
+ * Synchronize Question Sets and Bank Questions bidirectionally with Supabase Cloud
+ * 1. Downloads all cloud question sets and bank questions belonging to current user
+ * 2. Merges with local storage
+ * 3. Uploads any existing local sets/questions that are not yet in Supabase
+ */
+export async function syncCloudQuestionBank(): Promise<{ sets: QuestionSet[]; questions: BankQuestion[] }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { sets: getQuestionSets(), questions: getBankQuestions() };
+  }
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { sets: getQuestionSets(), questions: getBankQuestions() };
+    }
+
+    // 1. Fetch Question Sets from Supabase
+    const { data: cloudSetsData, error: setsErr } = await supabase
+      .from('question_sets')
+      .select('*')
+      .eq('user_id', user.id);
+
+    if (setsErr) {
+      console.warn('Supabase question_sets table fetch error:', setsErr);
+    }
+
+    // 2. Fetch Standalone Bank Questions from Supabase
+    const { data: cloudQuestionsData, error: qErr } = await supabase
+      .from('user_bank_questions')
+      .select('*')
+      .eq('user_id', user.id);
+
+    if (qErr) {
+      console.warn('Supabase user_bank_questions fetch error:', qErr);
+    }
+
+    const localSets = getQuestionSets();
+    const localUserQuestions = getUserBankQuestions();
+
+    const cloudSetsMap = new Map<string, QuestionSet>();
+    const cloudExtractedQuestions: BankQuestion[] = [];
+
+    if (cloudSetsData && Array.isArray(cloudSetsData)) {
+      cloudSetsData.forEach((row: any) => {
+        const setObj: QuestionSet = row.set_data || {
+          id: row.id,
+          name: row.title,
+          examSlug: row.exam_slug,
+          questionCount: row.question_count,
+          createdAt: row.updated_at,
+        };
+        cloudSetsMap.set(setObj.id, setObj);
+
+        if (Array.isArray(row.questions)) {
+          row.questions.forEach((q: BankQuestion) => {
+            cloudExtractedQuestions.push(q);
+          });
+        }
+      });
+    }
+
+    if (cloudQuestionsData && Array.isArray(cloudQuestionsData)) {
+      cloudQuestionsData.forEach((row: any) => {
+        if (row.question_data) {
+          cloudExtractedQuestions.push(row.question_data);
+        }
+      });
+    }
+
+    // Merge Question Sets
+    const mergedSetsMap = new Map<string, QuestionSet>();
+    localSets.forEach((s) => mergedSetsMap.set(s.id, s));
+    cloudSetsMap.forEach((s, id) => mergedSetsMap.set(id, s));
+    const mergedSets = Array.from(mergedSetsMap.values());
+    localStorage.setItem(STORAGE_KEY_QUESTION_SETS, JSON.stringify(mergedSets));
+
+    // Merge User Questions
+    const mergedQuestionsMap = new Map<string, BankQuestion>();
+    localUserQuestions.forEach((q) => mergedQuestionsMap.set(q.id, q));
+    cloudExtractedQuestions.forEach((q) => mergedQuestionsMap.set(q.id, q));
+    const mergedUserQuestions = Array.from(mergedQuestionsMap.values());
+    localStorage.setItem(STORAGE_KEY_BANK_QUESTIONS, JSON.stringify(mergedUserQuestions));
+
+    // Push local sets missing in cloud up to Supabase
+    if (!setsErr) {
+      const setsToUpload = localSets.filter((ls) => !cloudSetsMap.has(ls.id));
+      for (const set of setsToUpload) {
+        const setQuestions = mergedUserQuestions.filter((q) => q.questionSetId === set.id);
+        try {
+          await supabase.from('question_sets').upsert({
+            id: set.id,
+            user_id: user.id,
+            title: set.name,
+            exam_slug: set.examSlug,
+            question_count: set.questionCount || setQuestions.length,
+            set_data: set,
+            questions: setQuestions,
+            updated_at: set.createdAt || new Date().toISOString(),
+          });
+        } catch (err) {
+          console.warn('Failed to push set to cloud:', err);
+        }
+      }
+    }
+
+    // Push standalone questions missing in cloud up to Supabase
+    if (!qErr) {
+      const cloudQIds = new Set(cloudExtractedQuestions.map((q) => q.id));
+      const standaloneQuestionsToUpload = mergedUserQuestions.filter(
+        (q) => !q.questionSetId && !cloudQIds.has(q.id)
+      );
+      for (const q of standaloneQuestionsToUpload) {
+        try {
+          await supabase.from('user_bank_questions').upsert({
+            id: q.id,
+            user_id: user.id,
+            question_data: q,
+            updated_at: q.createdAt || new Date().toISOString(),
+          });
+        } catch (err) {
+          console.warn('Failed to push standalone question to cloud:', err);
+        }
+      }
+    }
+
+    return { sets: mergedSets, questions: getBankQuestions() };
+  } catch (err) {
+    console.warn('Error during syncCloudQuestionBank:', err);
+    return { sets: getQuestionSets(), questions: getBankQuestions() };
   }
 }
 

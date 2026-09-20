@@ -39,6 +39,7 @@ import {
   calculateAggregatedStats,
   AggregatedStats,
 } from '../../services/storage/historyStore';
+import { syncCloudQuestionBank } from '../../services/storage/questionBankStore';
 
 interface DashboardProps {
   onStartPreloadedExam: (examCategory: ExamCategory) => void;
@@ -93,6 +94,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         setStats(calculateAggregatedStats(synced));
       }
     });
+    syncCloudQuestionBank().catch(() => {});
   }, []);
 
   // Format progression chart data

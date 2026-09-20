@@ -12,7 +12,11 @@ import { ExamPatternView } from './components/syllabus/ExamPatternView';
 import { QuestionBankView } from './components/questionBank/QuestionBankView';
 import { ExamCategory, MockTest, TestResult, ExamPreset, ExamStageConfig } from './types/exam';
 import { PRELOADED_TESTS, EXAM_CONFIGS } from './data/mockExams';
-import { getBankQuestions, createMockTestFromBankQuestions } from './services/storage/questionBankStore';
+import {
+  getBankQuestions,
+  createMockTestFromBankQuestions,
+  syncCloudQuestionBank,
+} from './services/storage/questionBankStore';
 import { syncCloudTestResults } from './services/storage/historyStore';
 import { getSupabaseClient } from './services/supabase/supabaseClient';
 
@@ -64,6 +68,7 @@ export const App: React.FC = () => {
         setUserEmail(session.user.email);
         localStorage.setItem('mocktest_user_email', session.user.email);
         syncCloudTestResults();
+        syncCloudQuestionBank();
       }
     });
 
@@ -74,6 +79,7 @@ export const App: React.FC = () => {
         setUserEmail(session.user.email);
         localStorage.setItem('mocktest_user_email', session.user.email);
         syncCloudTestResults();
+        syncCloudQuestionBank();
       }
     });
 
@@ -368,6 +374,7 @@ export const App: React.FC = () => {
           setUserEmail(email);
           setIsAuthOpen(false);
           syncCloudTestResults();
+          syncCloudQuestionBank();
         }}
       />
     </div>

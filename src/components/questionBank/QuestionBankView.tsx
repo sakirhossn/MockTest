@@ -16,6 +16,7 @@ import {
   Plus,
   X,
   Filter,
+  RefreshCw,
 } from 'lucide-react';
 import { EXAM_PRESETS } from '../../data/examPresets';
 import {
@@ -25,6 +26,7 @@ import {
   deleteQuestionSet,
   saveBankQuestion,
   createMockTestFromBankQuestions,
+  syncCloudQuestionBank,
 } from '../../services/storage/questionBankStore';
 import { BankQuestion, QuestionSet, MockTest, ExamCategory } from '../../types/exam';
 import { MathRenderer } from '../common/MathRenderer';
@@ -49,6 +51,7 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
   // Question Sets State
   const [questionSets, setQuestionSets] = useState<QuestionSet[]>([]);
   const [loadingSets, setLoadingSets] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Modals State
   const [mockModalSet, setMockModalSet] = useState<QuestionSet | null>(null);
@@ -70,7 +73,7 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
   const [newQExplanation, setNewQExplanation] = useState('');
   const [newQDifficulty, setNewQDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoadingQuestions(true);
     setLoadingSets(true);
     const qData = getBankQuestions();
@@ -79,6 +82,18 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
     setQuestionSets(sData);
     setLoadingQuestions(false);
     setLoadingSets(false);
+
+    // Background cloud sync with Supabase
+    setIsSyncing(true);
+    try {
+      await syncCloudQuestionBank();
+      setQuestions(getBankQuestions());
+      setQuestionSets(getQuestionSets());
+    } catch (err) {
+      console.warn('Failed to sync question bank with cloud', err);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   useEffect(() => {
@@ -227,7 +242,17 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button
+            onClick={loadData}
+            disabled={isSyncing}
+            title="Synchronize Question Bank with Supabase Cloud"
+            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium text-xs transition flex items-center gap-1.5 shadow-sm"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync Cloud'}</span>
+          </button>
+
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 font-bold text-xs transition flex items-center gap-1.5"
