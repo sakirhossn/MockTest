@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Sparkles,
   Moon,
@@ -11,6 +11,8 @@ import {
   BookOpen,
   LogOut,
   Database,
+  Menu,
+  X,
 } from 'lucide-react';
 import { ExamCategory } from '../../types/exam';
 import { EXAM_CONFIGS } from '../../data/mockExams';
@@ -44,6 +46,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   userEmail,
   isGuest = true,
 }) => {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
@@ -203,8 +207,132 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
           </div>
+
+          {/* Mobile Menu Toggle Button */}
+          {currentView !== 'exam' && (
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label="Toggle navigation menu"
+              className="p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 lg:hidden transition ml-0.5"
+            >
+              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Mobile Collapsible Navigation Menu */}
+      {currentView !== 'exam' && isMobileMenuOpen && (
+        <div className="lg:hidden border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-4 pt-3 pb-4 space-y-3 shadow-xl">
+          {/* Target Exam Selector on mobile */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+              Target Examination
+            </label>
+            <select
+              value={selectedExam}
+              onChange={(e) => {
+                onSelectExam(e.target.value as ExamCategory);
+                setIsMobileMenuOpen(false);
+              }}
+              aria-label="Select Target Exam"
+              className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer"
+            >
+              {EXAM_CONFIGS.map((exam) => (
+                <option key={exam.id} value={exam.id}>
+                  Target: {exam.shortName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Navigation Items */}
+          <nav className="flex flex-col gap-1">
+            <button
+              onClick={() => {
+                onNavigate('dashboard');
+                setIsMobileMenuOpen(false);
+              }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition text-left ${
+                currentView === 'dashboard'
+                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300'
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4 text-indigo-500" />
+              <span>Dashboard</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onOpenGenerator();
+                setIsMobileMenuOpen(false);
+              }}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 text-left transition"
+            >
+              <FilePlus className="w-4 h-4 text-emerald-500" />
+              <span>Generate Exam</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onNavigate('syllabus');
+                setIsMobileMenuOpen(false);
+              }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition text-left ${
+                currentView === 'syllabus'
+                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300'
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+              }`}
+            >
+              <BookOpen className="w-4 h-4 text-blue-500" />
+              <span>Exam Patterns & Syllabi</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onNavigate('questionBank');
+                setIsMobileMenuOpen(false);
+              }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition text-left ${
+                currentView === 'questionBank'
+                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300'
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Database className="w-4 h-4 text-amber-500" />
+              <span>Question Bank</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onNavigate('history');
+                setIsMobileMenuOpen(false);
+              }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition text-left ${
+                currentView === 'history'
+                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300'
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+              }`}
+            >
+              <History className="w-4 h-4 text-purple-500" />
+              <span>Past Attempts</span>
+            </button>
+          </nav>
+
+          {/* Quick AI Mock Generator CTA button for Mobile */}
+          <button
+            onClick={() => {
+              onOpenGenerator();
+              setIsMobileMenuOpen(false);
+            }}
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white text-sm font-semibold shadow-md active:scale-95 transition"
+          >
+            <Sparkles className="w-4 h-4" />
+            AI Mock Generator
+          </button>
+        </div>
+      )}
     </header>
   );
 };
