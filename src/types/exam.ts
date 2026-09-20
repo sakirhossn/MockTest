@@ -134,3 +134,94 @@ export interface TestResult {
     isCorrect: boolean;
   }[];
 }
+
+// ==========================================
+// EXAM PATTERNS & SYLLABI TYPES
+// ==========================================
+export interface SyllabusSubjectRule {
+  id: string;
+  name: string;
+  slug: string;
+  questionCount: number;
+  marksPerQuestion: number;
+  negativeMark: number;
+  durationMinutes?: number;
+  topics: string[];
+}
+
+export interface ExamStageConfig {
+  id: string;
+  stageSlug: string;
+  stageName: string;
+  notificationVersion: string;
+  examYear: number;
+  totalQuestions: number;
+  totalMarks: number;
+  durationMinutes: number;
+  hasSectionalTiming: boolean;
+  marksPerCorrect: number;
+  negativeMarkPerWrong: number;
+  sourceUrl: string;
+  sourceTitle: string;
+  verificationDate: string;
+  languages: ('en' | 'hi' | 'bn')[];
+  subjects: SyllabusSubjectRule[];
+}
+
+export interface ExamPreset {
+  id: string;
+  slug: string;
+  name: string;
+  category: 'RAILWAY' | 'BANKING' | 'SSC' | 'STATE_PSC';
+  description: string;
+  officialUrl: string;
+  stages: ExamStageConfig[];
+}
+
+// ==========================================
+// QUESTION BANK TYPES
+// ==========================================
+export type QuestionSourceType =
+  | 'VERIFIED_PREVIOUS_YEAR'
+  | 'USER_UPLOADED'
+  | 'AI_GENERATED'
+  | 'DEMO';
+
+export interface BankQuestion {
+  id: string;
+  examSlug: string;
+  stageSlug?: string;
+  subjectSlug: string;
+  topicSlug: string;
+  questionText: string;
+  options: [string, string, string, string] | string[];
+  correctAnswer: 0 | 1 | 2 | 3 | number;
+  explanation: string;
+  difficulty: 'easy' | 'medium' | 'hard' | 'EASY' | 'MEDIUM' | 'HARD';
+  sourceType: QuestionSourceType;
+  sourceYear?: number;
+  sourceReference?: string;
+  language?: 'en' | 'hi' | 'bn';
+  qualityScore?: number;
+  validationStatus?: string;
+  isVerified?: boolean;
+  questionSetId?: string;
+  sourcePage?: number;
+  sourceQuestionNumber?: number;
+  createdAt: string;
+}
+
+export interface QuestionSet {
+  id: string;
+  name: string;
+  fileName?: string;
+  examSlug: string;
+  stageSlug?: string;
+  subjectSlug?: string;
+  topicSlug?: string;
+  pageCount?: number;
+  questionCount: number;
+  validQuestionCount?: number;
+  status?: 'READY' | 'VERIFIED' | 'PROCESSING';
+  createdAt: string;
+}

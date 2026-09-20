@@ -8,13 +8,17 @@ import { HistoryView } from './components/history/HistoryView';
 import { ExamGeneratorModal } from './components/generator/ExamGeneratorModal';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { AuthModal } from './components/auth/AuthModal';
-import { ExamCategory, MockTest, TestResult } from './types/exam';
+import { ExamPatternView } from './components/syllabus/ExamPatternView';
+import { QuestionBankView } from './components/questionBank/QuestionBankView';
+import { ExamCategory, MockTest, TestResult, ExamPreset, ExamStageConfig } from './types/exam';
 import { PRELOADED_TESTS, EXAM_CONFIGS } from './data/mockExams';
 import { getSupabaseClient } from './services/supabase/supabaseClient';
 
 export const App: React.FC = () => {
   // Navigation & Active Test State
-  const [currentView, setCurrentView] = useState<'dashboard' | 'exam' | 'results' | 'history'>('dashboard');
+  const [currentView, setCurrentView] = useState<
+    'dashboard' | 'exam' | 'results' | 'history' | 'syllabus' | 'questionBank'
+  >('dashboard');
   const [selectedExam, setSelectedExam] = useState<ExamCategory>('rrb_ntpc');
   const [activeTest, setActiveTest] = useState<MockTest | null>(null);
   const [activeResult, setActiveResult] = useState<TestResult | null>(null);
@@ -88,6 +92,27 @@ export const App: React.FC = () => {
 
   // Callback when a new test is generated via AI or OCR
   const handleTestGenerated = (test: MockTest) => {
+    setActiveTest(test);
+    setCurrentView('exam');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Launch test from ExamPatternView
+  const handleSelectStageForTest = (exam: ExamPreset, stage: ExamStageConfig) => {
+    const matchingPreload = PRELOADED_TESTS.find((t) => t.examType === (exam.slug as ExamCategory));
+    if (matchingPreload) {
+      setActiveTest(matchingPreload);
+      setCurrentView('exam');
+    } else {
+      // Fallback: generate/open generator with exam category
+      setGeneratorInitialExam(exam.slug as ExamCategory);
+      setIsGeneratorOpen(true);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Launch test from Question Bank
+  const handleStartTestFromBank = (test: MockTest) => {
     setActiveTest(test);
     setCurrentView('exam');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -178,6 +203,14 @@ export const App: React.FC = () => {
             onSelectResult={handleViewResult}
             onBackToDashboard={() => setCurrentView('dashboard')}
           />
+        )}
+
+        {currentView === 'syllabus' && (
+          <ExamPatternView onSelectStageForTest={handleSelectStageForTest} />
+        )}
+
+        {currentView === 'questionBank' && (
+          <QuestionBankView onStartTest={handleStartTestFromBank} />
         )}
 
         {currentView === 'exam' && activeTest && (

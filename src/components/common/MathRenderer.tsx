@@ -2,7 +2,8 @@ import React from 'react';
 import katex from 'katex';
 
 interface MathRendererProps {
-  content: string;
+  content?: string;
+  text?: string;
   className?: string;
   inline?: boolean;
 }
@@ -11,8 +12,14 @@ interface MathRendererProps {
  * Parses and renders text that contains inline ($...$) or block ($$...$$) LaTeX formulas
  * using KaTeX with automatic graceful fallback.
  */
-export const MathRenderer: React.FC<MathRendererProps> = ({ content, className = '', inline = false }) => {
-  if (!content) return null;
+export const MathRenderer: React.FC<MathRendererProps> = ({
+  content,
+  text,
+  className = '',
+  inline = false,
+}) => {
+  const targetContent = content ?? text ?? '';
+  if (!targetContent) return null;
 
   // Split content by $$ (block math) and $ (inline math)
   // Regular expression to identify:
@@ -24,11 +31,11 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, className =
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(content)) !== null) {
+  while ((match = regex.exec(targetContent)) !== null) {
     if (match.index > lastIndex) {
       parts.push({
         type: 'text',
-        value: content.slice(lastIndex, match.index),
+        value: targetContent.slice(lastIndex, match.index),
       });
     }
 
@@ -48,10 +55,10 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, className =
     lastIndex = match.index + matchedStr.length;
   }
 
-  if (lastIndex < content.length) {
+  if (lastIndex < targetContent.length) {
     parts.push({
       type: 'text',
-      value: content.slice(lastIndex),
+      value: targetContent.slice(lastIndex),
     });
   }
 

@@ -10,13 +10,14 @@ import {
   FilePlus,
   BookOpen,
   LogOut,
+  Database,
 } from 'lucide-react';
 import { ExamCategory } from '../../types/exam';
 import { EXAM_CONFIGS } from '../../data/mockExams';
 
 interface NavbarProps {
-  currentView: 'dashboard' | 'exam' | 'results' | 'history';
-  onNavigate: (view: 'dashboard' | 'history') => void;
+  currentView: 'dashboard' | 'exam' | 'results' | 'history' | 'syllabus' | 'questionBank';
+  onNavigate: (view: 'dashboard' | 'history' | 'syllabus' | 'questionBank') => void;
   onOpenGenerator: () => void;
   onOpenSettings: () => void;
   onOpenAuth: () => void;
@@ -108,6 +109,30 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <FilePlus className="w-4 h-4 text-indigo-500" />
               Generate Exam
+            </button>
+
+            <button
+              onClick={() => onNavigate('syllabus')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                currentView === 'syllabus'
+                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              Exam Patterns
+            </button>
+
+            <button
+              onClick={() => onNavigate('questionBank')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                currentView === 'questionBank'
+                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800'
+              }`}
+            >
+              <Database className="w-4 h-4" />
+              Question Bank
             </button>
 
             <button
