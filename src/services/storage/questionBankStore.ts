@@ -218,25 +218,53 @@ export function deleteQuestionSet(setId: string): void {
   }
 }
 
+export interface SyncResult {
+  success: boolean;
+  message: string;
+  error?: string;
+  uploadedSets: number;
+  downloadedSets: number;
+  totalSets: number;
+  status: 'SUCCESS' | 'NO_SUPABASE' | 'NOT_LOGGED_IN' | 'TABLE_MISSING' | 'ERROR';
+}
+
 /**
  * Synchronize Question Sets and Bank Questions bidirectionally with Supabase Cloud
  * 1. Downloads all cloud question sets and bank questions belonging to current user
  * 2. Merges with local storage
  * 3. Uploads any existing local sets/questions that are not yet in Supabase
  */
-export async function syncCloudQuestionBank(): Promise<{ sets: QuestionSet[]; questions: BankQuestion[] }> {
+export async function syncCloudQuestionBank(): Promise<SyncResult> {
   const supabase = getSupabaseClient();
+  const totalLocal = getQuestionSets().length;
+
   if (!supabase) {
-    return { sets: getQuestionSets(), questions: getBankQuestions() };
+    return {
+      success: false,
+      status: 'NO_SUPABASE',
+      message:
+        'Cloud Sync is not configured. Go to Settings (⚙️) -> Supabase to enter your Project URL & Key, or use "Export JSON" on the set card to transfer directly.',
+      uploadedSets: 0,
+      downloadedSets: 0,
+      totalSets: totalLocal,
+    };
   }
 
   try {
     const {
       data: { user },
+      error: userErr,
     } = await supabase.auth.getUser();
 
-    if (!user) {
-      return { sets: getQuestionSets(), questions: getBankQuestions() };
+    if (!user || userErr) {
+      return {
+        success: false,
+        status: 'NOT_LOGGED_IN',
+        message: 'You are not logged into your Supabase account. Please click the Profile icon in the top navigation to sign in.',
+        uploadedSets: 0,
+        downloadedSets: 0,
+        totalSets: totalLocal,
+      };
     }
 
     // 1. Fetch Question Sets from Supabase
@@ -246,7 +274,22 @@ export async function syncCloudQuestionBank(): Promise<{ sets: QuestionSet[]; qu
       .eq('user_id', user.id);
 
     if (setsErr) {
-      console.warn('Supabase question_sets table fetch error:', setsErr);
+      const isMissingTable =
+        setsErr.code === '42P01' ||
+        setsErr.message?.toLowerCase().includes('relation') ||
+        setsErr.message?.toLowerCase().includes('does not exist');
+
+      return {
+        success: false,
+        status: isMissingTable ? 'TABLE_MISSING' : 'ERROR',
+        message: isMissingTable
+          ? 'Table "question_sets" was not found in your Supabase project. Run the SQL schema from supabase/schema.sql in your Supabase SQL Editor.'
+          : `Supabase Error: ${setsErr.message}`,
+        error: setsErr.message,
+        uploadedSets: 0,
+        downloadedSets: 0,
+        totalSets: totalLocal,
+      };
     }
 
     // 2. Fetch Standalone Bank Questions from Supabase
@@ -255,15 +298,12 @@ export async function syncCloudQuestionBank(): Promise<{ sets: QuestionSet[]; qu
       .select('*')
       .eq('user_id', user.id);
 
-    if (qErr) {
-      console.warn('Supabase user_bank_questions fetch error:', qErr);
-    }
-
     const localSets = getQuestionSets();
     const localUserQuestions = getUserBankQuestions();
 
     const cloudSetsMap = new Map<string, QuestionSet>();
     const cloudExtractedQuestions: BankQuestion[] = [];
+    let downloadedSetsCount = 0;
 
     if (cloudSetsData && Array.isArray(cloudSetsData)) {
       cloudSetsData.forEach((row: any) => {
@@ -275,6 +315,10 @@ export async function syncCloudQuestionBank(): Promise<{ sets: QuestionSet[]; qu
           createdAt: row.updated_at,
         };
         cloudSetsMap.set(setObj.id, setObj);
+
+        if (!localSets.some((ls) => ls.id === setObj.id)) {
+          downloadedSetsCount++;
+        }
 
         if (Array.isArray(row.questions)) {
           row.questions.forEach((q: BankQuestion) => {
@@ -307,24 +351,28 @@ export async function syncCloudQuestionBank(): Promise<{ sets: QuestionSet[]; qu
     localStorage.setItem(STORAGE_KEY_BANK_QUESTIONS, JSON.stringify(mergedUserQuestions));
 
     // Push local sets missing in cloud up to Supabase
-    if (!setsErr) {
-      const setsToUpload = localSets.filter((ls) => !cloudSetsMap.has(ls.id));
-      for (const set of setsToUpload) {
-        const setQuestions = mergedUserQuestions.filter((q) => q.questionSetId === set.id);
-        try {
-          await supabase.from('question_sets').upsert({
-            id: set.id,
-            user_id: user.id,
-            title: set.name,
-            exam_slug: set.examSlug,
-            question_count: set.questionCount || setQuestions.length,
-            set_data: set,
-            questions: setQuestions,
-            updated_at: set.createdAt || new Date().toISOString(),
-          });
-        } catch (err) {
-          console.warn('Failed to push set to cloud:', err);
+    let uploadedSetsCount = 0;
+    const setsToUpload = localSets.filter((ls) => !cloudSetsMap.has(ls.id));
+    for (const set of setsToUpload) {
+      const setQuestions = mergedUserQuestions.filter((q) => q.questionSetId === set.id);
+      try {
+        const { error: upErr } = await supabase.from('question_sets').upsert({
+          id: set.id,
+          user_id: user.id,
+          title: set.name,
+          exam_slug: set.examSlug,
+          question_count: set.questionCount || setQuestions.length,
+          set_data: set,
+          questions: setQuestions,
+          updated_at: set.createdAt || new Date().toISOString(),
+        });
+        if (!upErr) {
+          uploadedSetsCount++;
+        } else {
+          console.warn('Failed to upload set:', upErr);
         }
+      } catch (err) {
+        console.warn('Failed to push set to cloud:', err);
       }
     }
 
@@ -348,11 +396,80 @@ export async function syncCloudQuestionBank(): Promise<{ sets: QuestionSet[]; qu
       }
     }
 
-    return { sets: mergedSets, questions: getBankQuestions() };
-  } catch (err) {
+    return {
+      success: true,
+      status: 'SUCCESS',
+      message: `Cloud sync completed! ${
+        uploadedSetsCount > 0
+          ? `Uploaded ${uploadedSetsCount} set(s) to cloud. `
+          : downloadedSetsCount > 0
+          ? `Downloaded ${downloadedSetsCount} set(s) from cloud. `
+          : 'All question sets are already synchronized.'
+      }`,
+      uploadedSets: uploadedSetsCount,
+      downloadedSets: downloadedSetsCount,
+      totalSets: mergedSets.length,
+    };
+  } catch (err: any) {
     console.warn('Error during syncCloudQuestionBank:', err);
-    return { sets: getQuestionSets(), questions: getBankQuestions() };
+    return {
+      success: false,
+      status: 'ERROR',
+      message: `Cloud sync error: ${err.message || 'Unknown network error'}`,
+      error: err.message,
+      uploadedSets: 0,
+      downloadedSets: 0,
+      totalSets: totalLocal,
+    };
   }
+}
+
+/**
+ * Export a Question Set and all its questions as a downloadable JSON file
+ */
+export function downloadQuestionSetJSON(setId: string): boolean {
+  const sets = getQuestionSets();
+  const targetSet = sets.find((s) => s.id === setId);
+  if (!targetSet) return false;
+
+  const allQuestions = getBankQuestions();
+  const setQuestions = allQuestions.filter((q) => q.questionSetId === setId);
+
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    set: targetSet,
+    questions: setQuestions,
+  };
+
+  const jsonStr = JSON.stringify(payload, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeTitle = targetSet.name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+  a.href = url;
+  a.download = `${safeTitle || 'question-set'}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  return true;
+}
+
+/**
+ * Import a Question Set and its questions from a JSON string or object
+ */
+export function importQuestionSetFromJSON(rawJson: string): { set: QuestionSet; questionCount: number } {
+  const parsed = JSON.parse(rawJson);
+  const set: QuestionSet = parsed.set || (parsed.id && parsed.name ? parsed : null);
+  if (!set || !set.id || !set.name) {
+    throw new Error('Invalid Question Set format. Must contain valid set details.');
+  }
+
+  const questions: BankQuestion[] = Array.isArray(parsed.questions) ? parsed.questions : [];
+  saveQuestionSet(set, questions);
+
+  return { set, questionCount: questions.length };
 }
 
 /**

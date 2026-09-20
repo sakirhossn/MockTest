@@ -17,6 +17,9 @@ import {
   X,
   Filter,
   RefreshCw,
+  Download,
+  Upload,
+  ExternalLink,
 } from 'lucide-react';
 import { EXAM_PRESETS } from '../../data/examPresets';
 import {
@@ -27,6 +30,9 @@ import {
   saveBankQuestion,
   createMockTestFromBankQuestions,
   syncCloudQuestionBank,
+  downloadQuestionSetJSON,
+  importQuestionSetFromJSON,
+  SyncResult,
 } from '../../services/storage/questionBankStore';
 import { BankQuestion, QuestionSet, MockTest, ExamCategory } from '../../types/exam';
 import { MathRenderer } from '../common/MathRenderer';
@@ -52,6 +58,7 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
   const [questionSets, setQuestionSets] = useState<QuestionSet[]>([]);
   const [loadingSets, setLoadingSets] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<SyncResult | null>(null);
 
   // Modals State
   const [mockModalSet, setMockModalSet] = useState<QuestionSet | null>(null);
@@ -73,7 +80,7 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
   const [newQExplanation, setNewQExplanation] = useState('');
   const [newQDifficulty, setNewQDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
-  const loadData = async () => {
+  const loadData = () => {
     setLoadingQuestions(true);
     setLoadingSets(true);
     const qData = getBankQuestions();
@@ -82,18 +89,48 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
     setQuestionSets(sData);
     setLoadingQuestions(false);
     setLoadingSets(false);
+  };
 
-    // Background cloud sync with Supabase
+  const handleSyncCloud = async () => {
     setIsSyncing(true);
+    setSyncFeedback(null);
     try {
-      await syncCloudQuestionBank();
+      const res = await syncCloudQuestionBank();
+      setSyncFeedback(res);
       setQuestions(getBankQuestions());
       setQuestionSets(getQuestionSets());
-    } catch (err) {
-      console.warn('Failed to sync question bank with cloud', err);
+    } catch (err: any) {
+      setSyncFeedback({
+        success: false,
+        status: 'ERROR',
+        message: err.message || 'Sync failed',
+        uploadedSets: 0,
+        downloadedSets: 0,
+        totalSets: questionSets.length,
+      });
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const handleImportJSONFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const { set, questionCount } = importQuestionSetFromJSON(content);
+        alert(`Successfully imported "${set.name}" with ${questionCount} questions into your Question Bank!`);
+        setQuestions(getBankQuestions());
+        setQuestionSets(getQuestionSets());
+      } catch (err: any) {
+        alert(`Failed to import Question Set: ${err.message || 'Invalid JSON file format'}`);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   useEffect(() => {
@@ -244,7 +281,7 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
 
         <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
           <button
-            onClick={loadData}
+            onClick={handleSyncCloud}
             disabled={isSyncing}
             title="Synchronize Question Bank with Supabase Cloud"
             className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium text-xs transition flex items-center gap-1.5 shadow-sm"
@@ -288,6 +325,48 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
           </div>
         </div>
       </div>
+
+      {/* Cloud Sync Status Feedback Banner */}
+      {syncFeedback && (
+        <div
+          className={`p-4 rounded-2xl border flex items-start justify-between gap-3 text-xs transition animate-in slide-in-from-top-2 duration-200 ${
+            syncFeedback.success
+              ? 'bg-emerald-50/90 border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-200'
+              : syncFeedback.status === 'TABLE_MISSING' || syncFeedback.status === 'NO_SUPABASE'
+              ? 'bg-amber-50/90 border-amber-200 text-amber-900 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-200'
+              : 'bg-rose-50/90 border-rose-200 text-rose-900 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-200'
+          }`}
+        >
+          <div className="flex items-start gap-2.5">
+            {syncFeedback.success ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-1">
+              <span className="font-bold block text-sm">
+                {syncFeedback.success
+                  ? 'Cloud Sync Complete'
+                  : syncFeedback.status === 'NO_SUPABASE'
+                  ? 'Supabase Cloud Not Connected'
+                  : syncFeedback.status === 'TABLE_MISSING'
+                  ? 'Database Table Missing in Supabase'
+                  : syncFeedback.status === 'NOT_LOGGED_IN'
+                  ? 'Authentication Required'
+                  : 'Cloud Sync Failed'}
+              </span>
+              <p className="text-xs opacity-90 leading-relaxed">{syncFeedback.message}</p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setSyncFeedback(null)}
+            className="p-1 rounded-lg opacity-70 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5 transition shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* TAB 1: QUESTION EXPLORER */}
       {activeTab === 'EXPLORER' && (
@@ -512,8 +591,28 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
       {/* TAB 2: MY QUESTION SETS */}
       {activeTab === 'QUESTION_SETS' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Showing {questionSets.length} Master Question Set(s)</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                Master Question Sets ({questionSets.length})
+              </h2>
+              <p className="text-[11px] text-slate-400">
+                Complete mock papers saved locally or synchronized across your devices.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="cursor-pointer px-3.5 py-1.5 rounded-xl border border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold text-xs transition flex items-center gap-1.5 shadow-sm">
+                <Upload className="w-3.5 h-3.5" />
+                <span>Import Set JSON</span>
+                <input
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={handleImportJSONFile}
+                />
+              </label>
+            </div>
           </div>
 
           {loadingSets ? (
@@ -579,17 +678,27 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
                   </div>
 
                   {/* Actions */}
-                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-1.5">
+                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-xs flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
                         onClick={() => {
                           setSelectedSetFilter(set.id);
                           setActiveTab('EXPLORER');
                         }}
-                        className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 font-semibold flex items-center gap-1"
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 font-semibold flex items-center gap-1"
+                        title="View questions in explorer"
                       >
                         <Eye className="w-3.5 h-3.5 text-slate-500" />
                         <span>View</span>
+                      </button>
+
+                      <button
+                        onClick={() => downloadQuestionSetJSON(set.id)}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold flex items-center gap-1"
+                        title="Download Question Set as JSON to transfer to mobile or backup"
+                      >
+                        <Download className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Export</span>
                       </button>
 
                       <button
