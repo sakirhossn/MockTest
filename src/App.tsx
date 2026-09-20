@@ -13,6 +13,7 @@ import { QuestionBankView } from './components/questionBank/QuestionBankView';
 import { ExamCategory, MockTest, TestResult, ExamPreset, ExamStageConfig } from './types/exam';
 import { PRELOADED_TESTS, EXAM_CONFIGS } from './data/mockExams';
 import { getBankQuestions, createMockTestFromBankQuestions } from './services/storage/questionBankStore';
+import { syncCloudTestResults } from './services/storage/historyStore';
 import { getSupabaseClient } from './services/supabase/supabaseClient';
 
 export const App: React.FC = () => {
@@ -53,7 +54,7 @@ export const App: React.FC = () => {
     }
   }, [darkMode]);
 
-  // Sync Supabase auth session (e.g. from email verification link or OAuth redirect)
+  // Sync Supabase auth session and cloud test history
   useEffect(() => {
     const supabase = getSupabaseClient();
     if (!supabase) return;
@@ -62,6 +63,7 @@ export const App: React.FC = () => {
       if (session?.user?.email) {
         setUserEmail(session.user.email);
         localStorage.setItem('mocktest_user_email', session.user.email);
+        syncCloudTestResults();
       }
     });
 
@@ -71,6 +73,7 @@ export const App: React.FC = () => {
       if (session?.user?.email) {
         setUserEmail(session.user.email);
         localStorage.setItem('mocktest_user_email', session.user.email);
+        syncCloudTestResults();
       }
     });
 
@@ -364,6 +367,7 @@ export const App: React.FC = () => {
         onLoginSuccess={(email) => {
           setUserEmail(email);
           setIsAuthOpen(false);
+          syncCloudTestResults();
         }}
       />
     </div>

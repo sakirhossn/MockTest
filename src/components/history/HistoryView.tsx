@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { History, Trash2, ArrowLeft, RotateCcw, Target, Clock, Trophy } from 'lucide-react';
 import { TestResult, ExamCategory } from '../../types/exam';
-import { getLocalResults, clearTestHistory, deleteTestResult } from '../../services/storage/historyStore';
+import { getLocalResults, clearTestHistory, deleteTestResult, syncCloudTestResults } from '../../services/storage/historyStore';
 import { EXAM_CONFIGS } from '../../data/mockExams';
 
 interface HistoryViewProps {
@@ -18,6 +18,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
   useEffect(() => {
     setResults(getLocalResults());
+    syncCloudTestResults().then((synced) => {
+      if (synced) setResults(synced);
+    });
   }, []);
 
   const handleDeleteOne = (id: string) => {

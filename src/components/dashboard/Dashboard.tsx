@@ -35,6 +35,7 @@ import { EXAM_CONFIGS, PRELOADED_TESTS } from '../../data/mockExams';
 import { EXAM_PRESETS } from '../../data/examPresets';
 import {
   getLocalResults,
+  syncCloudTestResults,
   calculateAggregatedStats,
   AggregatedStats,
 } from '../../services/storage/historyStore';
@@ -85,6 +86,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const loaded = getLocalResults();
     setResults(loaded);
     setStats(calculateAggregatedStats(loaded));
+
+    syncCloudTestResults().then((synced) => {
+      if (synced) {
+        setResults(synced);
+        setStats(calculateAggregatedStats(synced));
+      }
+    });
   }, []);
 
   // Format progression chart data

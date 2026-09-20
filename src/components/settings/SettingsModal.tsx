@@ -258,6 +258,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-800 text-xs font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>
+
+              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/50 space-y-1.5 text-xs">
+                <div className="flex items-center justify-between font-bold text-slate-800 dark:text-slate-200">
+                  <span>Cross-Device Cloud Sync Schema</span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400">test_results table</span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  To sync test attempts across PC and mobile, ensure the <code className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-mono">test_results</code> table exists in your Supabase project. See the full script in <code className="font-mono text-slate-700 dark:text-slate-300">supabase/schema.sql</code>.
+                </p>
+              </div>
             </div>
           )}
 

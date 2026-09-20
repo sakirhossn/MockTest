@@ -140,6 +140,116 @@ export function deleteTestResult(id: string): void {
   const current = getLocalResults();
   const updated = current.filter((r) => r.id !== id);
   localStorage.setItem(STORAGE_KEY_RESULTS, JSON.stringify(updated));
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    Promise.resolve(supabase.from('test_results').delete().eq('id', id)).catch(() => {});
+  }
+}
+
+/**
+ * Synchronize test results bidirectionally with Supabase Cloud
+ * 1. Pulls all cloud tests belonging to current user and merges into local storage
+ * 2. Pushes any local test results that are missing in the cloud up to Supabase
+ */
+export async function syncCloudTestResults(): Promise<TestResult[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return getLocalResults();
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return getLocalResults();
+
+    // Fetch tests from Supabase
+    const { data, error } = await supabase
+      .from('test_results')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('completed_at', { ascending: false });
+
+    if (error) {
+      console.warn('Supabase test_results fetch error:', error);
+      return getLocalResults();
+    }
+
+    if (data && Array.isArray(data)) {
+      const cloudResults: TestResult[] = data.map((row: any) => {
+        if (row.result_data && typeof row.result_data === 'object') {
+          return {
+            ...row.result_data,
+            id: row.id || row.result_data.id,
+            completedAt: row.completed_at || row.result_data.completedAt,
+          };
+        }
+        return {
+          id: row.id,
+          testId: row.id,
+          testTitle: row.test_title || 'Mock Test',
+          examType: row.exam_type || 'rrb_ntpc',
+          completedAt: row.completed_at || new Date().toISOString(),
+          timeTakenSeconds: row.time_taken_seconds || 0,
+          totalQuestions: row.total_questions || 10,
+          attemptedCount: row.attempted_count || 0,
+          correctCount: row.correct_count || 0,
+          incorrectCount: row.incorrect_count || 0,
+          unattemptedCount: 0,
+          markedCount: 0,
+          totalScore: row.total_score || 0,
+          maxScore: row.max_score || 10,
+          percentage: row.percentage || 0,
+          accuracy: row.accuracy || 0,
+          cutoffs: { general: 0, obc: 0, sc: 0, st: 0 },
+          clearedCutoff: !!row.cleared_cutoff,
+          sectionBreakdown: [],
+          userAnswers: {},
+          weaknessReport: [],
+          speedPerQuestion: [],
+        };
+      });
+
+      // Merge cloud and local results
+      const local = getLocalResults();
+      const map = new Map<string, TestResult>();
+
+      local.forEach((r) => map.set(r.id, r));
+      cloudResults.forEach((r) => map.set(r.id, r));
+
+      const merged = Array.from(map.values()).sort(
+        (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
+      );
+
+      localStorage.setItem(STORAGE_KEY_RESULTS, JSON.stringify(merged));
+
+      // Push any local tests missing in cloud
+      const cloudIds = new Set(data.map((row: any) => row.id));
+      for (const r of local) {
+        if (!cloudIds.has(r.id)) {
+          await supabase.from('test_results').upsert({
+            id: r.id,
+            user_id: user.id,
+            test_title: r.testTitle,
+            exam_type: r.examType,
+            total_score: r.totalScore,
+            max_score: r.maxScore,
+            accuracy: r.accuracy,
+            time_taken_seconds: r.timeTakenSeconds,
+            cleared_cutoff: r.clearedCutoff,
+            result_data: r,
+            completed_at: r.completedAt,
+          });
+        }
+      }
+
+      return merged;
+    }
+  } catch (err) {
+    console.warn('Error during syncCloudTestResults:', err);
+  }
+
+  return getLocalResults();
 }
 
 export interface AggregatedStats {
