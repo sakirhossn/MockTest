@@ -15,6 +15,9 @@ import {
   Landmark,
   ChevronRight,
   Target,
+  X,
+  ExternalLink,
+  Shield,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -27,8 +30,9 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
-import { ExamCategory, MockTest, TestResult } from '../../types/exam';
+import { ExamCategory, MockTest, TestResult, ExamPreset, ExamStageConfig } from '../../types/exam';
 import { EXAM_CONFIGS, PRELOADED_TESTS } from '../../data/mockExams';
+import { EXAM_PRESETS } from '../../data/examPresets';
 import {
   getLocalResults,
   calculateAggregatedStats,
@@ -40,6 +44,8 @@ interface DashboardProps {
   onOpenGeneratorWithExam: (examCategory: ExamCategory) => void;
   onOpenGenerator: () => void;
   onViewResult: (result: TestResult) => void;
+  onSelectStageForTest?: (exam: ExamPreset, stage: ExamStageConfig) => void;
+  onNavigate?: (view: 'dashboard' | 'history' | 'syllabus' | 'questionBank') => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -47,8 +53,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenGeneratorWithExam,
   onOpenGenerator,
   onViewResult,
+  onSelectStageForTest,
+  onNavigate,
 }) => {
   const [results, setResults] = useState<TestResult[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [inspectExam, setInspectExam] = useState<ExamPreset | null>(null);
   const [stats, setStats] = useState<AggregatedStats>({
     totalTests: 0,
     avgScorePercent: 0,
@@ -58,6 +68,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
     subjectBreakdown: [],
     avgTimePerQuestion: 0,
   });
+
+  const categories = ['ALL', 'RAILWAY', 'BANKING', 'SSC', 'STATE_PSC'];
+
+  const filteredExams =
+    selectedCategory === 'ALL'
+      ? EXAM_PRESETS
+      : EXAM_PRESETS.filter((e) => e.category === selectedCategory);
+
+  const getCategoryCount = (cat: string) => {
+    if (cat === 'ALL') return EXAM_PRESETS.length;
+    return EXAM_PRESETS.filter((e) => e.category === cat).length;
+  };
 
   useEffect(() => {
     const loaded = getLocalResults();
@@ -76,22 +98,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
       title: r.testTitle,
     }));
 
-  const getExamIcon = (category: ExamCategory) => {
-    switch (category) {
-      case 'rrb_ntpc':
-        return <Train className="w-5 h-5 text-emerald-500" />;
-      case 'ssc_cgl':
-      case 'ssc_chsl':
-        return <Award className="w-5 h-5 text-blue-500" />;
-      case 'ibps_po':
-      case 'ibps_clerk':
-        return <Landmark className="w-5 h-5 text-amber-500" />;
-      case 'wbpsc_clerkship':
-      case 'wbpsc_wbcs':
-        return <BookOpen className="w-5 h-5 text-purple-500" />;
-      default:
-        return <Sparkles className="w-5 h-5 text-indigo-500" />;
+  const getExamIcon = (category: string, slug?: string) => {
+    if (category === 'RAILWAY' || slug?.includes('rrb')) {
+      return <Train className="w-5 h-5 text-emerald-500" />;
     }
+    if (category === 'SSC' || slug?.includes('ssc')) {
+      return <Award className="w-5 h-5 text-blue-500" />;
+    }
+    if (category === 'BANKING' || slug?.includes('ibps')) {
+      return <Landmark className="w-5 h-5 text-amber-500" />;
+    }
+    if (category === 'STATE_PSC' || slug?.includes('wbpsc') || slug?.includes('wbcs')) {
+      return <BookOpen className="w-5 h-5 text-purple-500" />;
+    }
+    return <Sparkles className="w-5 h-5 text-indigo-500" />;
   };
 
   return (
@@ -195,81 +215,253 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </section>
 
-      {/* 3. Target Exam Cards (RRB, SSC, IBPS, WBPSC) */}
+      {/* 3. Target Exam Portals (14 Official Indian Exams across Railway, Banking, SSC, State PSC) */}
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
-              Target Exam Portals
+            <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <span>Target Exam Portals</span>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800">
+                14 Official Presets
+              </span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Select an exam to take full authentic mocks or generate targeted syllabus tests
+              Select an exam to take full authentic mocks, inspect official syllabus, or generate custom papers
             </p>
           </div>
+
+          {onNavigate && (
+            <button
+              onClick={() => onNavigate('syllabus')}
+              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 self-start sm:self-auto"
+            >
+              <span>View Full Syllabi &amp; Rules</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {EXAM_CONFIGS.map((exam) => (
-            <div
-              key={exam.id}
-              className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-400 shadow-sm transition flex flex-col justify-between space-y-4 group"
-            >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                    {getExamIcon(exam.id)}
+        {/* Category Filter Tabs */}
+        <div className="flex flex-wrap gap-2 pt-1 pb-1">
+          {categories.map((cat) => {
+            const count = getCategoryCount(cat);
+            const isSelected = selectedCategory === cat;
+            return (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                <span>{cat.replace('_', ' ')}</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                    isSelected
+                      ? 'bg-white/20 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Exam Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {filteredExams.map((exam) => {
+            const firstStage = exam.stages[0];
+            const examIcon = getExamIcon(exam.category, exam.slug);
+
+            return (
+              <div
+                key={exam.id}
+                className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-400 shadow-sm hover:shadow-md transition flex flex-col justify-between space-y-4 group"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-750">
+                      {examIcon}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/50">
+                        {exam.category.replace('_', ' ')}
+                      </span>
+                      {firstStage && (
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                          {firstStage.stageSlug.replace(/_/g, ' ')}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                    {exam.tierOrStage}
-                  </span>
+
+                  <div>
+                    <h3 className="font-extrabold text-base text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition">
+                      {exam.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 leading-relaxed">
+                      {exam.description}
+                    </p>
+                  </div>
+
+                  {firstStage && (
+                    <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1 pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <div className="flex justify-between">
+                        <span>Pattern:</span>
+                        <span className="font-semibold text-slate-900 dark:text-white">
+                          +{firstStage.marksPerCorrect} | -{firstStage.negativeMarkPerWrong.toFixed(2)} Neg
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Format:</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">
+                          {firstStage.totalQuestions} Qs • {firstStage.durationMinutes}m
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <div>
-                  <h3 className="font-extrabold text-base text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition">
-                    {exam.shortName}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 leading-relaxed">
-                    {exam.description}
-                  </p>
-                </div>
+                <div className="space-y-2 pt-2">
+                  <button
+                    onClick={() => {
+                      if (firstStage && onSelectStageForTest) {
+                        onSelectStageForTest(exam, firstStage);
+                      } else {
+                        onStartPreloadedExam(exam.slug as ExamCategory);
+                      }
+                    }}
+                    className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1.5"
+                  >
+                    <span>Start Live Mock</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
 
-                <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1 pt-1 border-t border-slate-100 dark:border-slate-800">
-                  <div className="flex justify-between">
-                    <span>Pattern:</span>
-                    <span className="font-semibold text-slate-900 dark:text-white">
-                      +{exam.marksPerQuestion} | -{(exam.marksPerQuestion * exam.negativeMarkRatio).toFixed(2)} Neg
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>UR Cut-off:</span>
-                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                      ~{exam.expectedCutoffs.general}
-                    </span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={() => onOpenGeneratorWithExam(exam.slug as ExamCategory)}
+                      className="py-1.5 rounded-xl border border-slate-200 dark:border-slate-750 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-[11px] transition flex items-center justify-center gap-1"
+                    >
+                      <Sparkles className="w-3 h-3 text-indigo-500" />
+                      <span>AI Paper</span>
+                    </button>
+
+                    <button
+                      onClick={() => setInspectExam(exam)}
+                      className="py-1.5 rounded-xl border border-slate-200 dark:border-slate-750 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-[11px] transition flex items-center justify-center gap-1"
+                    >
+                      <BookOpen className="w-3 h-3 text-purple-500" />
+                      <span>Syllabus</span>
+                    </button>
                   </div>
                 </div>
               </div>
-
-              <div className="space-y-2 pt-2">
-                <button
-                  onClick={() => onStartPreloadedExam(exam.id)}
-                  className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1.5 active:scale-95"
-                >
-                  <span>Start Live Mock</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  onClick={() => onOpenGeneratorWithExam(exam.id)}
-                  className="w-full py-2 rounded-xl border border-slate-200 dark:border-slate-750 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-xs transition flex items-center justify-center gap-1"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                  <span>AI Custom Paper</span>
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
+
+      {/* Syllabus Modal on Dashboard */}
+      {inspectExam && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                  {inspectExam.name} Official Syllabus &amp; Rules
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{inspectExam.description}</p>
+              </div>
+              <button
+                onClick={() => setInspectExam(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {inspectExam.stages.map((stage) => (
+              <div key={stage.id} className="space-y-4">
+                <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl border border-indigo-100 dark:border-indigo-900/50 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div>
+                    <span className="font-extrabold text-indigo-900 dark:text-indigo-200 text-sm">
+                      {stage.stageName}
+                    </span>
+                    <p className="text-slate-500 dark:text-slate-400 mt-0.5">{stage.sourceTitle}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold block">
+                      Verified: {stage.verificationDate}
+                    </span>
+                    <span className="text-slate-400 text-[10px]">{stage.notificationVersion}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    Subject Distribution &amp; Topics
+                  </h4>
+                  {stage.subjects.map((sub) => (
+                    <div
+                      key={sub.id}
+                      className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 space-y-2 text-xs"
+                    >
+                      <div className="flex items-center justify-between font-bold text-slate-900 dark:text-white">
+                        <span>{sub.name}</span>
+                        <span className="text-indigo-600 dark:text-indigo-400 font-semibold">
+                          {sub.questionCount} Qs ({sub.questionCount * sub.marksPerQuestion} Marks)
+                          {sub.durationMinutes ? ` • ${sub.durationMinutes} min limit` : ''}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {sub.topics.map((top, idx) => (
+                          <span
+                            key={idx}
+                            className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700"
+                          >
+                            {top}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    onClick={() => {
+                      const ex = inspectExam;
+                      setInspectExam(null);
+                      if (onSelectStageForTest) {
+                        onSelectStageForTest(ex, stage);
+                      } else {
+                        onStartPreloadedExam(ex.slug as ExamCategory);
+                      }
+                    }}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl font-bold text-xs transition flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Start Mock Test for {stage.stageName}</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <div className="pt-4 flex justify-end border-t border-slate-100 dark:border-slate-800">
+              <button
+                onClick={() => setInspectExam(null)}
+                className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 4. Performance Progression & Analytics Charts */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">

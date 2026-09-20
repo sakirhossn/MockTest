@@ -195,6 +195,8 @@ export const App: React.FC = () => {
               setIsGeneratorOpen(true);
             }}
             onViewResult={handleViewResult}
+            onSelectStageForTest={handleSelectStageForTest}
+            onNavigate={(view) => setCurrentView(view)}
           />
         )}
 
