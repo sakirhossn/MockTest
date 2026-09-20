@@ -24,12 +24,7 @@ import { ExamCategory, MockTest, Question, BankQuestion } from '../../types/exam
 import { generateAITest, generateTestFromDocument } from '../../services/ai/aiService';
 import { extractTextFromPDF, readImageAsDataUrl } from '../../services/ocr/documentParser';
 import { downloadMockPaperPDF } from '../../utils/pdfExport';
-import {
-  getBankQuestions,
-  getQuestionSets,
-  saveQuestionSet,
-  createMockTestFromBankQuestions,
-} from '../../services/storage/questionBankStore';
+import { saveQuestionSet } from '../../services/storage/questionBankStore';
 
 interface ExamGeneratorModalProps {
   isOpen: boolean;
@@ -44,14 +39,9 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
   onTestGenerated,
   initialExam = 'rrb_ntpc',
 }) => {
-  const [activeTab, setActiveTab] = useState<'auto' | 'document' | 'bank'>('auto');
+  const [activeTab, setActiveTab] = useState<'auto' | 'document'>('auto');
   const [reviewTest, setReviewTest] = useState<MockTest | null>(null);
   const [isSavedToBank, setIsSavedToBank] = useState(false);
-
-  // Mode 3 Question Bank State
-  const [selectedBankExam, setSelectedBankExam] = useState<ExamCategory>(initialExam);
-  const [selectedBankSetId, setSelectedBankSetId] = useState<string>('ALL');
-  const [bankQuestionCount, setBankQuestionCount] = useState<number>(10);
 
   // Mode 1 Form State
   const [selectedExam, setSelectedExam] = useState<ExamCategory>(initialExam);
@@ -154,6 +144,43 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
       );
 
       setReviewTest(test);
+
+      // Automatically store extracted questions into Question Bank
+      try {
+        const setId = `set-${Date.now()}`;
+        const bankQuestions: BankQuestion[] = test.questions.map((q, idx) => ({
+          id: `bank-q-${Date.now()}-${idx + 1}`,
+          examSlug: test.examType,
+          subjectSlug: q.section || 'General',
+          topicSlug: q.topic || 'General',
+          questionText: q.questionText,
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+          explanation: q.explanation,
+          difficulty: (q.difficulty as any) || 'medium',
+          sourceType: 'USER_UPLOADED',
+          questionSetId: setId,
+          createdAt: new Date().toISOString(),
+        }));
+
+        saveQuestionSet(
+          {
+            id: setId,
+            name: `${currentConfig.shortName} Document Upload (${test.questions.length} Qs)`,
+            fileName: uploadedFile?.name || `${test.title}`,
+            examSlug: test.examType,
+            pageCount: 1,
+            questionCount: bankQuestions.length,
+            validQuestionCount: bankQuestions.length,
+            status: 'VERIFIED',
+            createdAt: new Date().toISOString(),
+          },
+          bankQuestions
+        );
+        setIsSavedToBank(true);
+      } catch (saveErr) {
+        console.warn('Auto-save to question bank failed', saveErr);
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to parse document. Please check API Key in Settings.');
     } finally {
@@ -194,32 +221,6 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
       bankQuestions
     );
     setIsSavedToBank(true);
-  };
-
-  const handleGenerateMode3 = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg('');
-
-    const pool = getBankQuestions({
-      examSlug: selectedBankExam,
-      questionSetId: selectedBankSetId !== 'ALL' ? selectedBankSetId : undefined,
-    });
-
-    if (pool.length === 0) {
-      setErrorMsg('No questions available in Question Bank for the selected filters. Try choosing another exam or set.');
-      return;
-    }
-
-    const count = Math.min(bankQuestionCount, pool.length);
-    const shuffled = [...pool].sort(() => 0.5 - Math.random()).slice(0, count);
-    const test = createMockTestFromBankQuestions(
-      `${EXAM_CONFIGS.find((c) => c.id === selectedBankExam)?.shortName || 'Question Bank'} Practice Test (${count} Qs)`,
-      shuffled,
-      selectedBankExam
-    );
-
-    setIsSavedToBank(true);
-    setReviewTest(test);
   };
 
   const handleUpdateQuestion = (index: number, updated: Partial<Question>) => {
@@ -523,7 +524,7 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
             </div>
 
         {/* Tab Controls */}
-        <div className="grid grid-cols-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/50 p-1.5 gap-1.5">
+        <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/50 p-1.5 gap-1.5">
           <button
             type="button"
             onClick={() => setActiveTab('auto')}
@@ -547,18 +548,6 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
           >
             <FileUp className="w-3.5 h-3.5" />
             <span><span className="hidden sm:inline">Mode 2: </span>PDF / OCR</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('bank')}
-            className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 px-2 sm:px-4 rounded-xl text-xs font-bold transition ${
-              activeTab === 'bank'
-                ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            <Database className="w-3.5 h-3.5" />
-            <span><span className="hidden sm:inline">Mode 3: </span>Question Bank</span>
           </button>
         </div>
 
@@ -594,7 +583,7 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
                   Select Target Examination
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-56 overflow-y-auto p-1 border border-slate-100 dark:border-slate-800 rounded-xl">
                   {EXAM_CONFIGS.map((exam) => (
                     <button
                       key={exam.id}
@@ -861,93 +850,6 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
                 >
                   <Sparkles className="w-4 h-4" />
                   Convert Document to Interactive Test
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* Mode 3: Question Bank Form */}
-          {!isGenerating && activeTab === 'bank' && (
-            <form onSubmit={handleGenerateMode3} className="space-y-4">
-              <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 text-xs text-indigo-900 dark:text-indigo-200">
-                <p className="font-bold mb-0.5">Select from your Verified Question Bank</p>
-                <p className="text-slate-600 dark:text-slate-400">
-                  Select an examination category and pull authentic questions into the pre-exam editor.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Target Exam
-                </label>
-                <select
-                  value={selectedBankExam}
-                  onChange={(e) => setSelectedBankExam(e.target.value as ExamCategory)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
-                >
-                  {EXAM_CONFIGS.map((exam) => (
-                    <option key={exam.id} value={exam.id}>
-                      {exam.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Question Set Source
-                </label>
-                <select
-                  value={selectedBankSetId}
-                  onChange={(e) => setSelectedBankSetId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
-                >
-                  <option value="ALL">All Available Questions for this Exam</option>
-                  {getQuestionSets().map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.questionCount} Qs)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Number of Questions
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {[5, 10, 20, 50].map((cnt) => (
-                    <button
-                      key={cnt}
-                      type="button"
-                      onClick={() => setBankQuestionCount(cnt)}
-                      className={`py-2 rounded-xl text-xs font-bold transition border ${
-                        bankQuestionCount === cnt
-                          ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300'
-                          : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      {cnt} Qs
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Submit CTA */}
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-400"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex items-center gap-1.5 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition"
-                >
-                  <Database className="w-4 h-4" />
-                  Load Questions into Test
                 </button>
               </div>
             </form>

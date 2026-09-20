@@ -12,6 +12,7 @@ import { ExamPatternView } from './components/syllabus/ExamPatternView';
 import { QuestionBankView } from './components/questionBank/QuestionBankView';
 import { ExamCategory, MockTest, TestResult, ExamPreset, ExamStageConfig } from './types/exam';
 import { PRELOADED_TESTS, EXAM_CONFIGS } from './data/mockExams';
+import { getBankQuestions, createMockTestFromBankQuestions } from './services/storage/questionBankStore';
 import { getSupabaseClient } from './services/supabase/supabaseClient';
 
 export const App: React.FC = () => {
@@ -76,9 +77,25 @@ export const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  const getOrGenerateMockTest = (category: ExamCategory): MockTest => {
+    const preloaded = PRELOADED_TESTS.find((t) => t.examType === category);
+    if (preloaded) return preloaded;
+
+    const cfg = EXAM_CONFIGS.find((c) => c.id === category);
+    const bankQs = getBankQuestions({ examSlug: category });
+    const pool = bankQs.length > 0 ? bankQs : getBankQuestions().slice(0, 10);
+
+    return createMockTestFromBankQuestions(
+      `${cfg?.shortName || category.toUpperCase()} Full Live Mock Test`,
+      pool,
+      category,
+      cfg?.durationMinutes || 60
+    );
+  };
+
   // Start preloaded authentic exam immediately
   const handleStartPreloadedExam = (category: ExamCategory) => {
-    const test = PRELOADED_TESTS.find((t) => t.examType === category) || PRELOADED_TESTS[0];
+    const test = getOrGenerateMockTest(category);
     setActiveTest(test);
     setCurrentView('exam');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -99,15 +116,9 @@ export const App: React.FC = () => {
 
   // Launch test from ExamPatternView
   const handleSelectStageForTest = (exam: ExamPreset, stage: ExamStageConfig) => {
-    const matchingPreload = PRELOADED_TESTS.find((t) => t.examType === (exam.slug as ExamCategory));
-    if (matchingPreload) {
-      setActiveTest(matchingPreload);
-      setCurrentView('exam');
-    } else {
-      // Fallback: generate/open generator with exam category
-      setGeneratorInitialExam(exam.slug as ExamCategory);
-      setIsGeneratorOpen(true);
-    }
+    const test = getOrGenerateMockTest(exam.slug as ExamCategory);
+    setActiveTest(test);
+    setCurrentView('exam');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -274,13 +285,14 @@ export const App: React.FC = () => {
               <div className="flex justify-between">
                 <span>Duration:</span>
                 <span className="font-bold text-slate-900 dark:text-white">
-                  {PRELOADED_TESTS.find((t) => t.examType === confirmExam)?.durationMinutes || 20} Minutes
+                  {EXAM_CONFIGS.find((c) => c.id === confirmExam)?.durationMinutes || 60} Minutes
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Total Questions:</span>
                 <span className="font-bold text-slate-900 dark:text-white">
-                  {PRELOADED_TESTS.find((t) => t.examType === confirmExam)?.questions.length || 10} MCQs
+                  {PRELOADED_TESTS.find((t) => t.examType === confirmExam)?.questions.length ||
+                   getBankQuestions({ examSlug: confirmExam || '' }).length || 10} MCQs
                 </span>
               </div>
               <div className="flex justify-between">

@@ -328,13 +328,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                 <div className="space-y-2 pt-2">
                   <button
-                    onClick={() => {
-                      if (firstStage && onSelectStageForTest) {
-                        onSelectStageForTest(exam, firstStage);
-                      } else {
-                        onStartPreloadedExam(exam.slug as ExamCategory);
-                      }
-                    }}
+                    onClick={() => onStartPreloadedExam(exam.slug as ExamCategory)}
                     className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1.5"
                   >
                     <span>Start Live Mock</span>

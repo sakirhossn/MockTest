@@ -1,12 +1,19 @@
 export type ExamCategory =
   | 'rrb_ntpc'
+  | 'rrb_group_d'
   | 'ssc_cgl'
   | 'ssc_chsl'
+  | 'ssc_mts'
   | 'ibps_po'
   | 'ibps_clerk'
-  | 'wbpsc_clerkship'
+  | 'ibps_rrb_oa'
+  | 'ibps_rrb_os1'
   | 'wbpsc_wbcs'
-  | 'custom_uploaded';
+  | 'wbpsc_clerkship'
+  | 'wbpsc_misc'
+  | 'wbpsc_food_si'
+  | 'custom_uploaded'
+  | (string & {});
 
 export type ExamSubject =
   | 'quant'
