@@ -18,6 +18,8 @@ import {
   X,
   ExternalLink,
   Shield,
+  FileText,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -33,6 +35,7 @@ import {
 import { ExamCategory, MockTest, TestResult, ExamPreset, ExamStageConfig } from '../../types/exam';
 import { EXAM_CONFIGS, PRELOADED_TESTS } from '../../data/mockExams';
 import { EXAM_PRESETS } from '../../data/examPresets';
+import { getAllPYQPapers, convertPYQToMockTest, PYQPaper } from '../../data/pyqData';
 import {
   getLocalResults,
   syncCloudTestResults,
@@ -47,7 +50,8 @@ interface DashboardProps {
   onOpenGenerator: () => void;
   onViewResult: (result: TestResult) => void;
   onSelectStageForTest?: (exam: ExamPreset, stage: ExamStageConfig) => void;
-  onNavigate?: (view: 'dashboard' | 'history' | 'syllabus' | 'questionBank') => void;
+  onNavigate?: (view: 'dashboard' | 'history' | 'syllabus' | 'questionBank' | 'pyq') => void;
+  onStartPYQTest?: (test: MockTest) => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -57,10 +61,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onViewResult,
   onSelectStageForTest,
   onNavigate,
+  onStartPYQTest,
 }) => {
   const [results, setResults] = useState<TestResult[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [inspectExam, setInspectExam] = useState<ExamPreset | null>(null);
+  const [pyqModalExam, setPyqModalExam] = useState<ExamPreset | null>(null);
+  const [allPYQs, setAllPYQs] = useState<PYQPaper[]>([]);
   const [stats, setStats] = useState<AggregatedStats>({
     totalTests: 0,
     avgScorePercent: 0,
@@ -83,10 +90,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return EXAM_PRESETS.filter((e) => e.category === cat).length;
   };
 
+  const getPYQCountForExam = (examSlug: string) => {
+    return allPYQs.filter((p) => p.examSlug === examSlug || p.examSlug.replace(/_/g, '-') === examSlug.replace(/_/g, '-')).length;
+  };
+
+  const getPYQPapersForExam = (examSlug: string) => {
+    return allPYQs.filter((p) => p.examSlug === examSlug || p.examSlug.replace(/_/g, '-') === examSlug.replace(/_/g, '-'));
+  };
+
   useEffect(() => {
     const loaded = getLocalResults();
     setResults(loaded);
     setStats(calculateAggregatedStats(loaded));
+    setAllPYQs(getAllPYQPapers());
 
     syncCloudTestResults().then((synced) => {
       if (synced) {
@@ -241,13 +257,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {onNavigate && (
-            <button
-              onClick={() => onNavigate('syllabus')}
-              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 self-start sm:self-auto"
-            >
-              <span>View Full Syllabi &amp; Rules</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-2.5 self-start sm:self-auto flex-wrap">
+              <button
+                onClick={() => onNavigate('pyq')}
+                className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Practice PYQs</span>
+                <ChevronRight className="w-3 h-3" />
+              </button>
+              <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">•</span>
+              <button
+                onClick={() => onNavigate('syllabus')}
+                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+              >
+                <span>View Full Syllabi &amp; Rules</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           )}
         </div>
 
@@ -263,7 +290,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                   isSelected
                     ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
-                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    : 'bg-white dark:bg-slate-850 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}
               >
                 <span>{cat.replace('_', ' ')}</span>
@@ -286,6 +313,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {filteredExams.map((exam) => {
             const firstStage = exam.stages[0];
             const examIcon = getExamIcon(exam.category, exam.slug);
+            const pyqCount = getPYQCountForExam(exam.slug);
 
             return (
               <div
@@ -345,9 +373,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
 
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <div className="grid grid-cols-3 gap-1.5">
                     <button
                       onClick={() => onOpenGeneratorWithExam(exam.slug as ExamCategory)}
+                      title="Generate custom AI Mock Paper"
                       className="py-1.5 rounded-xl border border-slate-200 dark:border-slate-750 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-[11px] transition flex items-center justify-center gap-1"
                     >
                       <Sparkles className="w-3 h-3 text-indigo-500" />
@@ -355,7 +384,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </button>
 
                     <button
+                      onClick={() => setPyqModalExam(exam)}
+                      title="Practice Authentic Previous Year Question Papers"
+                      className="py-1.5 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/30 hover:bg-amber-100/70 dark:hover:bg-amber-950/50 text-amber-800 dark:text-amber-300 font-bold text-[11px] transition flex items-center justify-center gap-1"
+                    >
+                      <FileText className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                      <span>PYQ{pyqCount > 0 ? ` (${pyqCount})` : ''}</span>
+                    </button>
+
+                    <button
                       onClick={() => setInspectExam(exam)}
+                      title="Inspect official syllabus & pattern rules"
                       className="py-1.5 rounded-xl border border-slate-200 dark:border-slate-750 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-[11px] transition flex items-center justify-center gap-1"
                     >
                       <BookOpen className="w-3 h-3 text-purple-500" />
@@ -620,6 +659,107 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </table>
         </div>
       </section>
+
+      {/* Quick PYQ Selection Modal for Exam Card */}
+      {pyqModalExam && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-xl w-full max-h-[85vh] overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 shadow-2xl">
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    {pyqModalExam.name} Previous Year Papers
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Official authentic shift papers &amp; memory-based tests
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPyqModalExam(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {getPYQPapersForExam(pyqModalExam.slug).length === 0 ? (
+                <div className="text-center p-8 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+                  <FileText className="w-8 h-8 text-slate-400 mx-auto" />
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    No preloaded PYQ papers found specifically for {pyqModalExam.name}.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setPyqModalExam(null);
+                      if (onNavigate) onNavigate('pyq');
+                    }}
+                    className="px-4 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow transition"
+                  >
+                    Fetch Authentic Paper with AI
+                  </button>
+                </div>
+              ) : (
+                getPYQPapersForExam(pyqModalExam.slug).map((paper) => (
+                  <div
+                    key={paper.id}
+                    className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 hover:border-amber-400 dark:hover:border-amber-500/50 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50">
+                          {paper.year} • {paper.shift}
+                        </span>
+                        <span className="text-[11px] text-slate-400">{paper.durationMinutes}m • {paper.questions.length} Qs</span>
+                      </div>
+                      <h4 className="font-bold text-xs text-slate-900 dark:text-white">
+                        {paper.title}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 line-clamp-1">{paper.sourceReference}</p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        const p = paper;
+                        setPyqModalExam(null);
+                        if (onStartPYQTest) {
+                          onStartPYQTest(convertPYQToMockTest(p));
+                        } else {
+                          onStartPreloadedExam(p.examSlug as ExamCategory);
+                        }
+                      }}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm transition whitespace-nowrap flex items-center justify-center gap-1.5"
+                    >
+                      <span>Take Live Mock</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 flex items-center justify-between">
+              <span className="text-xs text-slate-500">
+                Official negative marking &amp; full solution keys included.
+              </span>
+              <button
+                onClick={() => {
+                  setPyqModalExam(null);
+                  if (onNavigate) onNavigate('pyq');
+                }}
+                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+              >
+                <span>View All Exams PYQ Portal</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

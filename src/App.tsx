@@ -10,6 +10,7 @@ import { SettingsModal } from './components/settings/SettingsModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { ExamPatternView } from './components/syllabus/ExamPatternView';
 import { QuestionBankView } from './components/questionBank/QuestionBankView';
+import { PYQView } from './components/pyq/PYQView';
 import { ExamCategory, MockTest, TestResult, ExamPreset, ExamStageConfig } from './types/exam';
 import { PRELOADED_TESTS, EXAM_CONFIGS } from './data/mockExams';
 import {
@@ -23,7 +24,7 @@ import { getSupabaseClient } from './services/supabase/supabaseClient';
 export const App: React.FC = () => {
   // Navigation & Active Test State
   const [currentView, setCurrentView] = useState<
-    'dashboard' | 'exam' | 'results' | 'history' | 'syllabus' | 'questionBank'
+    'dashboard' | 'exam' | 'results' | 'history' | 'syllabus' | 'questionBank' | 'pyq'
   >('dashboard');
   const [selectedExam, setSelectedExam] = useState<ExamCategory>('rrb_ntpc');
   const [activeTest, setActiveTest] = useState<MockTest | null>(null);
@@ -226,6 +227,14 @@ export const App: React.FC = () => {
             onViewResult={handleViewResult}
             onSelectStageForTest={handleSelectStageForTest}
             onNavigate={(view) => setCurrentView(view)}
+            onStartPYQTest={handleStartTestFromBank}
+          />
+        )}
+
+        {currentView === 'pyq' && (
+          <PYQView
+            onStartTest={handleStartTestFromBank}
+            onSelectExam={(cat) => setSelectedExam(cat)}
           />
         )}
 

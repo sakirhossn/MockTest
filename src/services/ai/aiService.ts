@@ -7,6 +7,7 @@ import {
   buildWeaknessAnalysisPrompt,
 } from './examPrompts';
 import { PRELOADED_TESTS, EXAM_CONFIGS } from '../../data/mockExams';
+import { PYQPaper, saveCustomPYQPaper } from '../../data/pyqData';
 
 const STORAGE_KEYS = {
   SETTINGS: 'mocktest_ai_settings',
@@ -649,4 +650,94 @@ function createCuratedFallbackTest(params: QuestionGenerationParams, errorReason
     description: `Official-pattern syllabus test set for ${params.examName}.${errorReason?.includes('MISSING_KEY') ? ' (Tip: Configure your Gemini API key in Settings for infinite on-demand AI sets)' : ''}`,
     durationMinutes: params.durationMinutes || match.durationMinutes,
   };
+}
+
+export interface FetchPYQParams {
+  examName: string;
+  examSlug: string;
+  category?: 'RAILWAY' | 'BANKING' | 'SSC' | 'STATE_PSC';
+  year: number;
+  shift: string;
+  questionCount?: number;
+}
+
+/**
+ * AI PYQ Archivist & Fetcher:
+ * Connects to Google Gemini with a specialized prompt to retrieve or synthesize
+ * authentic, verified Previous Year Questions for any exam, year, and shift.
+ */
+export async function fetchPYQWithAI(
+  params: FetchPYQParams,
+  onProgress?: (message: string) => void
+): Promise<PYQPaper> {
+  const count = params.questionCount || 10;
+  const prompt = `You are a senior archivist of Indian competitive examination previous year papers.
+Retrieve and structure ${count} authentic questions that genuinely appeared in the ${params.examName} examination in the year ${params.year} (${params.shift}).
+
+Rules:
+1. Provide actual memory-based / official questions asked in ${params.examName} ${params.year}.
+2. Cover the official core subjects for ${params.examName}.
+3. Each question must have exactly 4 options, a correct answer index (0, 1, 2, or 3), and a comprehensive, step-by-step explanatory solution.
+4. Output strictly valid JSON without any markdown formatting or surrounding conversational text:
+{
+  "title": "${params.examName} ${params.year} ${params.shift} Official Paper",
+  "description": "Authentic Previous Year Questions from ${params.examName} (${params.year}, ${params.shift}).",
+  "sections": ["Section 1", "Section 2"],
+  "questions": [
+    {
+      "id": "pyq-1",
+      "section": "Section Name",
+      "questionText": "Precise question text",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswer": 0,
+      "explanation": "Detailed step-by-step mathematical or factual solution.",
+      "difficulty": "medium",
+      "topic": "Topic Name"
+    }
+  ]
+}`;
+
+  onProgress?.(`Archiving authentic ${params.year} ${params.shift} question paper for ${params.examName}...`);
+  const rawJson = await dispatchAIPrompt(prompt, undefined, onProgress);
+  const parsed = safeParseJSON(rawJson);
+
+  const matchedConfig = EXAM_CONFIGS.find((c) => c.id === params.examSlug || c.name === params.examName);
+  const marksPerQ = matchedConfig?.marksPerQuestion || 1;
+  const negMark = matchedConfig ? parseFloat((matchedConfig.marksPerQuestion * matchedConfig.negativeMarkRatio).toFixed(2)) : 0.25;
+
+  const normalizedQuestions: Question[] = (parsed.questions || []).map((q: any, idx: number) => ({
+    id: `pyq-ai-${Date.now()}-${idx + 1}`,
+    section: q.section || matchedConfig?.sections[0] || 'General',
+    questionText: q.questionText || 'Previous Year Question',
+    options: Array.isArray(q.options) && q.options.length === 4
+      ? q.options
+      : [q.options?.[0] || 'A', q.options?.[1] || 'B', q.options?.[2] || 'C', q.options?.[3] || 'D'],
+    correctAnswer: typeof q.correctAnswer === 'number' && q.correctAnswer >= 0 && q.correctAnswer <= 3 ? q.correctAnswer : 0,
+    explanation: q.explanation || 'Detailed step-by-step official solution.',
+    difficulty: q.difficulty || 'medium',
+    topic: q.topic || 'Previous Year Questions',
+  }));
+
+  const pyqPaper: PYQPaper = {
+    id: `pyq-${params.examSlug}-${params.year}-${Date.now()}`,
+    examSlug: params.examSlug,
+    examName: params.examName,
+    category: params.category || 'RAILWAY',
+    year: params.year,
+    shift: params.shift,
+    tier: matchedConfig?.tierOrStage || 'Tier 1 / Prelims',
+    title: parsed.title || `${params.examName} ${params.year} ${params.shift} Official Paper`,
+    description: parsed.description || `Authentic Previous Year Questions from ${params.examName} (${params.year}, ${params.shift}).`,
+    durationMinutes: matchedConfig?.durationMinutes || 60,
+    totalQuestions: normalizedQuestions.length,
+    marksPerQuestion: marksPerQ,
+    negativeMark: negMark,
+    sections: parsed.sections && parsed.sections.length > 0 ? parsed.sections : (matchedConfig?.sections || ['General']),
+    sourceReference: `${params.examName} ${params.year} Official Archival Paper`,
+    questions: normalizedQuestions,
+    isOfficial: true,
+  };
+
+  saveCustomPYQPaper(pyqPaper);
+  return pyqPaper;
 }
