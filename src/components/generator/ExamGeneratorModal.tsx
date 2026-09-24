@@ -126,15 +126,18 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
     setLoadingMessage('Consulting Indian Exam Pattern Specialist...');
 
     try {
-      const test = await generateAITest({
-        examCategory: selectedExam,
-        examName: currentConfig.name,
-        subject: selectedSubject === 'Full Pattern (All Sections)' ? undefined : selectedSubject,
-        difficulty,
-        questionCount,
-        durationMinutes,
-        customTopic: customTopic.trim() || undefined,
-      });
+      const test = await generateAITest(
+        {
+          examCategory: selectedExam,
+          examName: currentConfig.name,
+          subject: selectedSubject === 'Full Pattern (All Sections)' ? undefined : selectedSubject,
+          difficulty,
+          questionCount,
+          durationMinutes,
+          customTopic: customTopic.trim() || undefined,
+        },
+        (msg) => setLoadingMessage(msg)
+      );
 
       setReviewTest(test);
     } catch (err: any) {
@@ -162,7 +165,8 @@ export const ExamGeneratorModal: React.FC<ExamGeneratorModalProps> = ({
           targetExam: currentConfig.name,
           questionCount: undefined, // Extract ALL questions found in PDF/document
         },
-        uploadedFile.type.startsWith('image/') ? uploadedFile : undefined
+        uploadedFile.type.startsWith('image/') ? uploadedFile : undefined,
+        (msg) => setLoadingMessage(msg)
       );
 
       test.examType = selectedExam;

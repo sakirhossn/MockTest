@@ -24,8 +24,10 @@ export function getStoredAISettings(): AISettings {
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      const rawModel = parsed.modelName || 'gemini-3.6-flash';
-      const cleanModel = rawModel.includes('2.0') || rawModel.includes('1.5') || rawModel.includes('2.5') ? 'gemini-3.6-flash' : rawModel;
+      const rawModel = parsed.modelName || 'gemini-2.5-flash';
+      let cleanModel = rawModel;
+      if (rawModel.includes('3.6') || rawModel.includes('3.8')) cleanModel = 'gemini-2.5-flash';
+      if (rawModel.includes('3.5')) cleanModel = 'gemini-2.5-flash-lite';
       return {
         ...parsed,
         modelName: cleanModel,
@@ -43,7 +45,7 @@ export function getStoredAISettings(): AISettings {
     geminiApiKey: localStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || envGemini,
     openaiApiKey: localStorage.getItem(STORAGE_KEYS.OPENAI_KEY) || envOpenai,
     claudeApiKey: localStorage.getItem(STORAGE_KEYS.CLAUDE_KEY) || envClaude,
-    modelName: 'gemini-3.6-flash',
+    modelName: 'gemini-2.5-flash',
     temperature: 0.2,
   };
 }
@@ -58,7 +60,7 @@ export function saveStoredAISettings(settings: AISettings) {
 /**
  * Strips markdown json codeblock wrappers ```json ... ``` if present
  */
-function cleanJsonString(raw: string): string {
+export function cleanJsonString(raw: string): string {
   let cleaned = raw.trim();
   if (cleaned.startsWith('```json')) {
     cleaned = cleaned.slice(7);
@@ -72,101 +74,188 @@ function cleanJsonString(raw: string): string {
 }
 
 /**
- * Executes a prompt via Google Gemini API
+ * Robust JSON parser that recovers from:
+ * 1. Markdown codeblock wrapping
+ * 2. Unescaped backslashes in math/LaTeX (e.g. \frac, \alpha, \degree, \times)
+ * 3. Trailing commas before } or ]
+ * 4. Extraneous text surrounding the JSON object
+ */
+export function safeParseJSON(raw: string): any {
+  let cleaned = cleanJsonString(raw);
+
+  // 1. Direct parse attempt
+  try {
+    return JSON.parse(cleaned);
+  } catch (initialErr) {
+    // 2. Extract outermost JSON structure if extra conversational text exists
+    const firstBrace = cleaned.indexOf('{');
+    const firstBracket = cleaned.indexOf('[');
+    let startIdx = -1;
+    let endIdx = -1;
+
+    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+      startIdx = firstBrace;
+      endIdx = cleaned.lastIndexOf('}');
+    } else if (firstBracket !== -1) {
+      startIdx = firstBracket;
+      endIdx = cleaned.lastIndexOf(']');
+    }
+
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      cleaned = cleaned.substring(startIdx, endIdx + 1);
+      try {
+        return JSON.parse(cleaned);
+      } catch (e) {}
+    }
+
+    // 3. Fix unescaped backslashes (common in math, LaTeX, formulas, e.g. \frac, \alpha, \degree)
+    try {
+      const sanitized = cleaned.replace(/\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\');
+      return JSON.parse(sanitized);
+    } catch (e) {}
+
+    // 4. Fix trailing commas before closing braces/brackets
+    try {
+      const fixedCommas = cleaned
+        .replace(/\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\')
+        .replace(/,\s*([}\]])/g, '$1');
+      return JSON.parse(fixedCommas);
+    } catch (e) {}
+
+    throw initialErr;
+  }
+}
+
+/**
+ * Executes a prompt via Google Gemini API with 4 retry attempts
+ * Intervals: 5s, 10s, 20s, 40s (on 503, 429, or temporary overload)
  */
 async function callGemini(
   prompt: string,
   apiKey: string,
-  model = 'gemini-3.6-flash',
-  imageInlineData?: { mimeType: string; data: string }
+  model = 'gemini-2.5-flash',
+  imageInlineData?: { mimeType: string; data: string },
+  onProgress?: (message: string) => void
 ): Promise<string> {
   const cleanKey = (apiKey || '').trim();
   if (!cleanKey || cleanKey === 'AIzaSy...') {
     throw new Error('Please configure your Google Gemini API key in Settings (gear icon at the top).');
   }
 
-  const primaryModel = model.includes('2.0') || model.includes('1.5') || model.includes('2.5') ? 'gemini-3.6-flash' : model;
+  // Model candidates in priority order: user model, official flagship 2.5, fast 2.5-lite, 2.0, 1.5
+  const primaryModel = model || 'gemini-2.5-flash';
   const candidates = [
     primaryModel,
-    'gemini-3.6-flash',
-    'gemini-3.8-flash',
-    'gemini-3.5-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
   ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
+
+  // Exact user-specified retry intervals: 5s, 10s, 20s, 40s
+  const RETRY_INTERVALS_MS = [5000, 10000, 20000, 40000];
+  const MAX_RETRIES = RETRY_INTERVALS_MS.length; // 4 retries
 
   let lastErrorMsg = '';
 
-  for (const m of candidates) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${cleanKey}`;
-    const parts: any[] = [{ text: prompt }];
-    if (imageInlineData) {
-      parts.unshift({
-        inlineData: {
-          mimeType: imageInlineData.mimeType,
-          data: imageInlineData.data,
-        },
-      });
+  for (let retryIdx = 0; retryIdx <= MAX_RETRIES; retryIdx++) {
+    // If this is a retry attempt, wait for the specified interval with live countdown
+    if (retryIdx > 0) {
+      const waitSeconds = RETRY_INTERVALS_MS[retryIdx - 1] / 1000;
+      console.warn(
+        `[Gemini API] Server busy or unavailable. Waiting ${waitSeconds}s before retry ${retryIdx} of ${MAX_RETRIES}...`
+      );
+
+      for (let sec = waitSeconds; sec > 0; sec--) {
+        onProgress?.(
+          `Gemini server experiencing high demand. Retrying in ${sec}s (Attempt ${retryIdx} of ${MAX_RETRIES})...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      onProgress?.(`Contacting Gemini AI (Attempt ${retryIdx} of ${MAX_RETRIES})...`);
     }
 
-    const payload = {
-      contents: [{ role: 'user', parts }],
-      systemInstruction: { parts: [{ text: EXAM_SETTER_SYSTEM_PROMPT }] },
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-      },
-    };
+    // Try candidate models in this attempt
+    for (const m of candidates) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${cleanKey}`;
+      const parts: any[] = [{ text: prompt }];
+      if (imageInlineData) {
+        parts.unshift({
+          inlineData: {
+            mimeType: imageInlineData.mimeType,
+            data: imageInlineData.data,
+          },
+        });
+      }
 
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': cleanKey,
+      const payload = {
+        contents: [{ role: 'user', parts }],
+        systemInstruction: { parts: [{ text: EXAM_SETTER_SYSTEM_PROMPT }] },
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: 'application/json',
         },
-        body: JSON.stringify(payload),
-      });
+      };
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        const errMsg = err.error?.message || '';
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': cleanKey,
+          },
+          body: JSON.stringify(payload),
+        });
 
-        if (
-          errMsg.includes('invalid authentication') ||
-          errMsg.includes('API_KEY_INVALID') ||
-          res.status === 401
-        ) {
-          throw new Error('Invalid Google Gemini API key. Please check your API key in Settings (gear icon at the top).');
-        }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          const errMsg = err.error?.message || '';
 
-        if (
-          res.status === 503 ||
-          res.status === 429 ||
-          errMsg.toLowerCase().includes('high demand') ||
-          errMsg.toLowerCase().includes('resource_exhausted') ||
-          errMsg.toLowerCase().includes('overloaded') ||
-          errMsg.toLowerCase().includes('no longer available') ||
-          errMsg.toLowerCase().includes('not found')
-        ) {
-          lastErrorMsg = errMsg;
-          console.warn(`Model ${m} unavailable (${errMsg}). Retrying with next fallback model...`);
-          await new Promise((r) => setTimeout(r, 600));
+          // If invalid key, fail immediately without retrying
+          if (
+            errMsg.includes('invalid authentication') ||
+            errMsg.includes('API_KEY_INVALID') ||
+            res.status === 401
+          ) {
+            throw new Error(
+              'Invalid Google Gemini API key. Please check your API key in Settings (gear icon at the top).'
+            );
+          }
+
+          // If high demand / 503 / 429 / overloaded
+          if (
+            res.status === 503 ||
+            res.status === 429 ||
+            errMsg.toLowerCase().includes('high demand') ||
+            errMsg.toLowerCase().includes('resource_exhausted') ||
+            errMsg.toLowerCase().includes('overloaded') ||
+            errMsg.toLowerCase().includes('service unavailable')
+          ) {
+            lastErrorMsg = errMsg || `Gemini ${m} service unavailable (${res.status})`;
+            console.warn(`Model ${m} unavailable (${lastErrorMsg}). Trying next model or scheduling retry...`);
+            continue; // Try next candidate model
+          }
+
+          lastErrorMsg = errMsg || `Gemini API call failed with status ${res.status}`;
           continue;
         }
 
-        throw new Error(errMsg || `Gemini API call failed with status ${res.status}`);
+        const json = await res.json();
+        const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!rawText) throw new Error('No content returned from Gemini API');
+        return rawText;
+      } catch (err: any) {
+        if (err.message?.includes('Invalid Google Gemini API key')) throw err;
+        lastErrorMsg = err.message || 'Gemini connection error';
       }
-
-      const json = await res.json();
-      const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawText) throw new Error('No content returned from Gemini API');
-      return rawText;
-    } catch (err: any) {
-      if (err.message?.includes('Invalid Google Gemini API key')) throw err;
-      lastErrorMsg = err.message || 'Gemini error';
     }
   }
 
-  throw new Error(lastErrorMsg || 'All Gemini models are temporarily experiencing high demand. Please try again shortly.');
+  throw new Error(
+    lastErrorMsg ||
+      'All Gemini models are temporarily experiencing high demand after 4 retry attempts (5s, 10s, 20s, 40s). Please try again shortly.'
+  );
 }
 
 /**
@@ -279,7 +368,8 @@ async function callClaude(
  */
 async function dispatchAIPrompt(
   prompt: string,
-  imageInlineData?: { mimeType: string; data: string }
+  imageInlineData?: { mimeType: string; data: string },
+  onProgress?: (message: string) => void
 ): Promise<string> {
   const settings = getStoredAISettings();
 
@@ -288,7 +378,7 @@ async function dispatchAIPrompt(
     if (!cleanKey || cleanKey === 'AIzaSy...') {
       throw new Error('MISSING_KEY: Please enter your Google Gemini API key in Settings (gear icon at the top).');
     }
-    return callGemini(prompt, cleanKey, settings.modelName || 'gemini-2.5-flash', imageInlineData);
+    return callGemini(prompt, cleanKey, settings.modelName || 'gemini-2.5-flash', imageInlineData, onProgress);
   }
 
   if (settings.provider === 'openai') {
@@ -311,12 +401,15 @@ async function dispatchAIPrompt(
 /**
  * Mode 1: Auto AI Exam Generator
  */
-export async function generateAITest(params: QuestionGenerationParams): Promise<MockTest> {
+export async function generateAITest(
+  params: QuestionGenerationParams,
+  onProgress?: (message: string) => void
+): Promise<MockTest> {
   const prompt = buildExamGenerationPrompt(params);
 
   try {
-    const rawJson = await dispatchAIPrompt(prompt);
-    const parsed = JSON.parse(cleanJsonString(rawJson));
+    const rawJson = await dispatchAIPrompt(prompt, undefined, onProgress);
+    const parsed = safeParseJSON(rawJson);
 
     const examConfig = EXAM_CONFIGS.find((c) => c.id === params.examCategory);
     const normalizedQuestions: Question[] = (parsed.questions || []).map((q: any, idx: number) => ({
@@ -362,7 +455,8 @@ export async function generateAITest(params: QuestionGenerationParams): Promise<
  */
 export async function generateTestFromDocument(
   params: OCRGenerationParams,
-  imageFile?: File
+  imageFile?: File,
+  onProgress?: (message: string) => void
 ): Promise<MockTest> {
   let imageInlineData: { mimeType: string; data: string } | undefined;
 
@@ -377,8 +471,8 @@ export async function generateTestFromDocument(
   const prompt = buildOCRExtractionPrompt(params);
 
   try {
-    const rawJson = await dispatchAIPrompt(prompt, imageInlineData);
-    const parsed = JSON.parse(cleanJsonString(rawJson));
+    const rawJson = await dispatchAIPrompt(prompt, imageInlineData, onProgress);
+    const parsed = safeParseJSON(rawJson);
 
     const normalizedQuestions: Question[] = (parsed.questions || []).map((q: any, idx: number) => ({
       id: `ocr-${Date.now()}-${idx + 1}`,
