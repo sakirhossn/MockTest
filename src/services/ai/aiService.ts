@@ -24,10 +24,17 @@ export function getStoredAISettings(): AISettings {
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      const rawModel = parsed.modelName || 'gemini-2.5-flash';
+      const rawModel = parsed.modelName || 'gemini-3.6-flash';
       let cleanModel = rawModel;
-      if (rawModel.includes('3.6') || rawModel.includes('3.8')) cleanModel = 'gemini-2.5-flash';
-      if (rawModel.includes('3.5')) cleanModel = 'gemini-2.5-flash-lite';
+      // Auto-migrate obsolete or non-found models to gemini-3.6-flash
+      if (
+        cleanModel === 'gemini-2.5-flash' ||
+        cleanModel === 'gemini-1.5-flash' ||
+        cleanModel === 'gemini-2.0-flash' ||
+        cleanModel.includes('2.5')
+      ) {
+        cleanModel = 'gemini-3.6-flash';
+      }
       return {
         ...parsed,
         modelName: cleanModel,
@@ -45,7 +52,7 @@ export function getStoredAISettings(): AISettings {
     geminiApiKey: localStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || envGemini,
     openaiApiKey: localStorage.getItem(STORAGE_KEYS.OPENAI_KEY) || envOpenai,
     claudeApiKey: localStorage.getItem(STORAGE_KEYS.CLAUDE_KEY) || envClaude,
-    modelName: 'gemini-2.5-flash',
+    modelName: 'gemini-3.6-flash',
     temperature: 0.2,
   };
 }
@@ -126,6 +133,34 @@ export function safeParseJSON(raw: string): any {
   }
 }
 
+let cachedSupportedModels: string[] | null = null;
+
+/**
+ * Dynamically queries Google ModelService.ListModels to discover
+ * the exact models currently available to this API key and region
+ */
+async function fetchSupportedModels(apiKey: string): Promise<string[]> {
+  if (cachedSupportedModels && cachedSupportedModels.length > 0) {
+    return cachedSupportedModels;
+  }
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data.models)) return [];
+    const valid = data.models
+      .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+      .map((m: any) => (m.name || '').replace(/^models\//, ''))
+      .filter(Boolean);
+    if (valid.length > 0) {
+      cachedSupportedModels = valid;
+    }
+    return valid;
+  } catch (e) {
+    return [];
+  }
+}
+
 /**
  * Executes a prompt via Google Gemini API with 4 retry attempts
  * Intervals: 5s, 10s, 20s, 40s (on 503, 429, or temporary overload)
@@ -133,7 +168,7 @@ export function safeParseJSON(raw: string): any {
 async function callGemini(
   prompt: string,
   apiKey: string,
-  model = 'gemini-2.5-flash',
+  model = 'gemini-3.6-flash',
   imageInlineData?: { mimeType: string; data: string },
   onProgress?: (message: string) => void
 ): Promise<string> {
@@ -142,10 +177,18 @@ async function callGemini(
     throw new Error('Please configure your Google Gemini API key in Settings (gear icon at the top).');
   }
 
-  // Model candidates in priority order: user model, official flagship 2.5, fast 2.5-lite, 2.0, 1.5
-  const primaryModel = model || 'gemini-2.5-flash';
-  const candidates = [
+  // Model candidates in priority order:
+  // 1. User selected model (e.g. gemini-3.6-flash or gemini-3.5-flash-lite)
+  // 2. Official Gemini 3 flash models (high throughput & fast)
+  // 3. Fallbacks (2.5, 2.0, 1.5)
+  const primaryModel = model || 'gemini-3.6-flash';
+  let candidates = [
     primaryModel,
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-3.5-flash',
+    'gemini-3.7-flash',
     'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
     'gemini-2.0-flash',
@@ -157,6 +200,7 @@ async function callGemini(
   const MAX_RETRIES = RETRY_INTERVALS_MS.length; // 4 retries
 
   let lastErrorMsg = '';
+  let discoveredModels = false;
 
   for (let retryIdx = 0; retryIdx <= MAX_RETRIES; retryIdx++) {
     // If this is a retry attempt, wait for the specified interval with live countdown
@@ -175,6 +219,8 @@ async function callGemini(
 
       onProgress?.(`Contacting Gemini AI (Attempt ${retryIdx} of ${MAX_RETRIES})...`);
     }
+
+    let hadTemporaryError = false;
 
     // Try candidate models in this attempt
     for (const m of candidates) {
@@ -212,14 +258,17 @@ async function callGemini(
           const err = await res.json().catch(() => ({}));
           const errMsg = err.error?.message || '';
 
-          // If invalid key, fail immediately without retrying
+          // If invalid key / authentication error, fail immediately without retrying
           if (
             errMsg.includes('invalid authentication') ||
             errMsg.includes('API_KEY_INVALID') ||
+            errMsg.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED') ||
+            errMsg.includes('API_KEY_SERVICE_BLOCKED') ||
+            errMsg.includes('API key not valid') ||
             res.status === 401
           ) {
             throw new Error(
-              'Invalid Google Gemini API key. Please check your API key in Settings (gear icon at the top).'
+              'Invalid Google Gemini API key or credentials. Please verify your key at https://aistudio.google.com/app/apikey and update it in Settings.'
             );
           }
 
@@ -232,9 +281,25 @@ async function callGemini(
             errMsg.toLowerCase().includes('overloaded') ||
             errMsg.toLowerCase().includes('service unavailable')
           ) {
+            hadTemporaryError = true;
             lastErrorMsg = errMsg || `Gemini ${m} service unavailable (${res.status})`;
-            console.warn(`Model ${m} unavailable (${lastErrorMsg}). Trying next model or scheduling retry...`);
+            console.warn(`Model ${m} busy/overloaded (${lastErrorMsg}). Trying next model or scheduling retry...`);
             continue; // Try next candidate model
+          }
+
+          // If 404 (model not found for this API version/account)
+          if (res.status === 404 || errMsg.toLowerCase().includes('not found')) {
+            lastErrorMsg = errMsg || `Model ${m} not found`;
+            console.warn(`Model ${m} not found on v1beta (404). Trying next model...`);
+            if (!discoveredModels) {
+              discoveredModels = true;
+              const liveModels = await fetchSupportedModels(cleanKey);
+              if (liveModels.length > 0) {
+                console.log('[Gemini API] Dynamically discovered models for this key:', liveModels);
+                candidates = [...liveModels, ...candidates].filter((x, i, a) => a.indexOf(x) === i);
+              }
+            }
+            continue;
           }
 
           lastErrorMsg = errMsg || `Gemini API call failed with status ${res.status}`;
@@ -246,9 +311,15 @@ async function callGemini(
         if (!rawText) throw new Error('No content returned from Gemini API');
         return rawText;
       } catch (err: any) {
-        if (err.message?.includes('Invalid Google Gemini API key')) throw err;
+        if (err.message?.includes('Invalid Google Gemini API key') || err.message?.includes('credentials')) throw err;
         lastErrorMsg = err.message || 'Gemini connection error';
+        hadTemporaryError = true;
       }
+    }
+
+    // If only non-retriable errors (like 404 on all models) and no 503/429 overload, don't sleep 40s
+    if (!hadTemporaryError && retryIdx === 0) {
+      break;
     }
   }
 
@@ -378,7 +449,7 @@ async function dispatchAIPrompt(
     if (!cleanKey || cleanKey === 'AIzaSy...') {
       throw new Error('MISSING_KEY: Please enter your Google Gemini API key in Settings (gear icon at the top).');
     }
-    return callGemini(prompt, cleanKey, settings.modelName || 'gemini-2.5-flash', imageInlineData, onProgress);
+    return callGemini(prompt, cleanKey, settings.modelName || 'gemini-3.6-flash', imageInlineData, onProgress);
   }
 
   if (settings.provider === 'openai') {
