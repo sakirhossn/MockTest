@@ -213,11 +213,12 @@ export function getSupabaseRestEndpoint(setId?: string): {
   anonKey: string;
 } {
   const { url, anonKey } = getSupabaseCredentials();
+  const isSpecific = setId && setId !== 'ALL' && setId.trim() !== '';
 
   if (!url) {
     return {
       baseUrl: 'https://YOUR_SUPABASE_PROJECT_ID.supabase.co/rest/v1',
-      url: setId
+      url: isSpecific
         ? `https://YOUR_SUPABASE_PROJECT_ID.supabase.co/rest/v1/question_sets?id=eq.${setId}&select=*`
         : 'https://YOUR_SUPABASE_PROJECT_ID.supabase.co/rest/v1/question_sets?select=*',
       hasSupabase: false,
@@ -227,7 +228,7 @@ export function getSupabaseRestEndpoint(setId?: string): {
 
   const cleanBase = url.replace(/\/$/, '');
   const restBase = `${cleanBase}/rest/v1`;
-  const endpoint = setId
+  const endpoint = isSpecific
     ? `${restBase}/question_sets?id=eq.${setId}&select=*`
     : `${restBase}/question_sets?select=*`;
 

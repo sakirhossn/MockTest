@@ -50,9 +50,7 @@ export const ApiIntegrationModal: React.FC<ApiIntegrationModalProps> = ({
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<'js' | 'python' | 'curl' | 'php'>('js');
-  const [selectedSetId, setSelectedSetId] = useState<string>(
-    questionSets.length > 0 ? questionSets[0].id : ''
-  );
+  const [selectedSetId, setSelectedSetId] = useState<string>('ALL');
 
   // Live Test State
   const [isTesting, setIsTesting] = useState(false);
@@ -67,15 +65,12 @@ export const ApiIntegrationModal: React.FC<ApiIntegrationModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setSecretKey(getApiSecretKey());
-      if (questionSets.length > 0 && !selectedSetId) {
-        setSelectedSetId(questionSets[0].id);
-      }
     }
-  }, [isOpen, questionSets, selectedSetId]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const endpointInfo = getSupabaseRestEndpoint(selectedSetId || undefined);
+  const endpointInfo = getSupabaseRestEndpoint(selectedSetId);
 
   const handleCopyKey = () => {
     navigator.clipboard.writeText(secretKey);
@@ -275,7 +270,7 @@ CREATE POLICY "Allow external API read access to question sets"
                         onChange={(e) => setSelectedSetId(e.target.value)}
                         className="text-[11px] font-semibold py-0.5 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 max-w-[160px] truncate"
                       >
-                        <option value="">All Question Sets</option>
+                        <option value="ALL">All Question Sets</option>
                         {questionSets.map((s) => (
                           <option key={s.id} value={s.id}>
                             {s.name} ({s.questionCount} Qs)
