@@ -20,7 +20,11 @@ import {
   Download,
   Upload,
   ExternalLink,
+  Key,
+  Send,
 } from 'lucide-react';
+import { ApiIntegrationModal } from './ApiIntegrationModal';
+import { SendViaApiModal } from './SendViaApiModal';
 import { EXAM_PRESETS } from '../../data/examPresets';
 import {
   getBankQuestions,
@@ -64,6 +68,8 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
   const [mockModalSet, setMockModalSet] = useState<QuestionSet | null>(null);
   const [mockQuestionCount, setMockQuestionCount] = useState(10);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isApiModalOpen, setIsApiModalOpen] = useState(false);
+  const [apiSendModalSet, setApiSendModalSet] = useState<QuestionSet | null>(null);
 
   // New Question Form State
   const [newQExam, setNewQExam] = useState('rrb_ntpc');
@@ -280,6 +286,15 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button
+            onClick={() => setIsApiModalOpen(true)}
+            title="API Keys, Cloud REST Endpoints & Webhook Documentation"
+            className="px-3.5 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold text-xs transition flex items-center gap-1.5 shadow-sm active:scale-95"
+          >
+            <Key className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <span>API Access &amp; Docs</span>
+          </button>
+
           <button
             onClick={handleSyncCloud}
             disabled={isSyncing}
@@ -702,6 +717,15 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
                       </button>
 
                       <button
+                        onClick={() => setApiSendModalSet(set)}
+                        className="px-2.5 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/60 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1 transition"
+                        title="Send Question Set to Another Project via Webhook API"
+                      >
+                        <Send className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>Send API</span>
+                      </button>
+
+                      <button
                         onClick={(e) => handleDeleteSet(set.id, e)}
                         className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                         title="Delete Set"
@@ -959,6 +983,21 @@ export const QuestionBankView: React.FC<QuestionBankViewProps> = ({ onStartTest 
           </div>
         </div>
       )}
+
+      {/* API Integration Hub Modal */}
+      <ApiIntegrationModal
+        isOpen={isApiModalOpen}
+        onClose={() => setIsApiModalOpen(false)}
+        questionSets={questionSets}
+      />
+
+      {/* Send Question Set via Webhook API Modal */}
+      <SendViaApiModal
+        isOpen={!!apiSendModalSet}
+        onClose={() => setApiSendModalSet(null)}
+        questionSet={apiSendModalSet}
+        questions={questions}
+      />
     </div>
   );
 };

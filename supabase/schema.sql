@@ -106,3 +106,14 @@ CREATE POLICY "Users can update their own bank questions"
 CREATE POLICY "Users can delete their own bank questions"
   ON public.user_bank_questions FOR DELETE
   USING (auth.uid() = user_id);
+
+-- ==============================================================================
+-- 7. (Optional) External Project API Read Access for Question Sets
+-- Run this if you want your other projects (websites, Python scripts, apps) to
+-- query public.question_sets using the Supabase Anon API key.
+-- ==============================================================================
+CREATE POLICY "Allow external API clients to read question sets"
+  ON public.question_sets FOR SELECT
+  TO anon, authenticated
+  USING (true);
+
